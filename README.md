@@ -158,10 +158,22 @@ surface, AAudio, touch, turnip loading) are not needed on the Switch.
 
 ## Edition
 
-The hook addresses (`0x826E0250` ring wait, `0x824FFBE0`/`0x8250B200`/`0x82500298` render mode) and the function list
-in the manifest are for the XEX nfs-carbon-recomp was made from. The hooks check the code at their addresses and do
-nothing on a mismatch; for another edition, re-derive them with `tools/find_fingerprints.py`
-([docs/carbon/render-mode-addresses.md](docs/carbon/render-mode-addresses.md)).
+Only the **USA (NTSC-U) disc version, without title update**, is supported: `Need for Speed - Carbon (USA) (En,Es)`.
+
+| | |
+|---|---|
+| Title ID | `454107EC` |
+| Media ID | `51D2B53F` |
+| XEX version | `0.0.0.1` |
+| Region flags | `0x000000FF` (NTSC-U) |
+| Entry point | `0x829446E0` |
+| `default.xex` SHA-1 | `75ed29cfde2af689fb4f0615d743c07cab31b9da` |
+
+Checked by decrypting both retail XEXs: in the USA one all four hook fingerprints match
+(`0x824FFBE0`, `0x8250B200`, `0x82500298`, `0x826E0250`), both ring-wait return addresses (`0x826DBE14`,
+`0x826DBBF8`) follow a `bl 0x826E0250`, and the manifest's function hints sit right after `b`/`blr` boundaries.
+In the Europe one (`(En,Nl,Sv,Da,Fi)`, Media ID `573FDB37`, version `0.0.0.4`) none of them match: it would need
+its own manifest and addresses (`tools/find_fingerprints.py`), as nfsmw-nx does per edition.
 
 ## Verification
 
