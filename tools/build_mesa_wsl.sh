@@ -54,6 +54,37 @@ open(p, "w").write(s)
 PY
 fi
 
+# With the target set, the wrapper also cross-compiled the crates Meson builds for the build machine
+# (proc-macros such as paste and nak_ir_proc, and their dependencies syn, quote, proc-macro2...), which run
+# inside the compiler and must stay x86-64. Meson calls both through the same "rustc" (the wrapper is first
+# in PATH); the build-machine ones are the ones linked with the native "cc", the Switch ones with
+# aarch64-none-elf-gcc. So the wrapper drops the target for native links and proc-macros.
+if ! grep -q "nfscarbon-nx: native" "$MESA/rustc-switch-wrapper.sh"; then
+  echo "== keeping build-machine Rust crates native in rustc-switch-wrapper.sh"
+  python3 - "$MESA/rustc-switch-wrapper.sh" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+old = "        *sanity_check_for_rust.rs*|*sanitycheckrs.rs*) RUST_TARGET= ;;\n    esac\ndone\n"
+assert old in s, "rustc-switch-wrapper.sh changed upstream"
+s = s.replace(old, old + """
+# nfscarbon-nx: native crates (build machine) keep the host target.
+_cross=unknown
+_prev=
+for arg in "$@"; do
+    case "$arg" in
+        *aarch64-none-elf*) _cross=yes ;;
+        linker=cc|linker=gcc|linker=c++|-Clinker=cc|-Clinker=gcc) [ "$_cross" = yes ] || _cross=no ;;
+        proc-macro) [ "$_prev" = "--crate-type" ] && _cross=no ;;
+    esac
+    _prev=$arg
+done
+[ "$_cross" = no ] && RUST_TARGET=
+""")
+open(p, "w").write(s)
+PY
+fi
+
 echo "== building (Docker)"
 (cd "$MESA" && ./build-switch.sh)
 
