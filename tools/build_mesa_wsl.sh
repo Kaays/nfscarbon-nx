@@ -32,7 +32,7 @@ if ! git -C "$MESA" diff --quiet; then
 else
   echo "== applying mesa/mesa-switch-nfsmw.patch"
   git -C "$MESA" apply "$ROOT/mesa/mesa-switch-nfsmw.patch"
-  chmod +x "$MESA"/*.sh
+  chmod +x "$MESA"/*.sh "$ROOT"/tools/*.sh
 fi
 
 echo "== building (Docker)"
@@ -42,6 +42,13 @@ LIB=$MESA/builddir-switch/src/nouveau/vulkan/libvulkan.a
 [ -f "$LIB" ] || { echo "build finished but $LIB is missing"; exit 1; }
 mkdir -p "$SDK/lib"
 cp "$LIB" "$SDK/lib/"
+
+# The NRO also links expat and zstd (Mesa's dependencies). The build image already has them in its
+# devkitPro portlibs, so they are taken from there: the host's devkitPro does not need them installed.
+echo "== copying expat and zstd from the build image"
+docker run --rm -v "$SDK/lib:/out" devkitpro-mesa-rust bash -c \
+  'for l in expat zstd; do f=/opt/devkitpro/portlibs/switch/lib/lib$l.a; if [ -f $f ]; then cp $f /out/; echo "  lib$l.a"; else echo "  lib$l.a NOT in the image"; fi; done'
+
 echo
 echo "done: $SDK/lib/libvulkan.a ($(du -h "$SDK/lib/libvulkan.a" | cut -f1))"
 echo "use it with: tools/build.sh $SDK"

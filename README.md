@@ -86,7 +86,7 @@ and about 16 GB of RAM for LTO.
    It clones [mesa-switch](https://github.com/danfromtico/mesa-switch) at commit `1a8c1a66d6f`, applies
    `mesa/mesa-switch-nfsmw.patch`, builds it with mesa-switch's `build-switch.sh` (in a Docker container) and copies
    the merged `libvulkan.a` to `out/mesa-sdk/lib`. That folder is the `REXGLUE_SWITCH_NVK_SDK` of step 6. The NRO
-   also links devkitPro's `switch-expat`, `switch-zlib` and `switch-zstd` packages. On Windows/MSYS2, see
+   also links expat and zstd, which the script copies from the Docker build image. On Windows/MSYS2, see
    [mesa/README.md](mesa/README.md).
 
 4. **Code generator** for your PC:
