@@ -89,18 +89,22 @@ and about 16 GB of RAM for LTO.
    also links expat and zstd, which the script copies from the Docker build image. On Windows/MSYS2, see
    [mesa/README.md](mesa/README.md).
 
-4. **Code generator** for your PC:
+4. **Code generator** for your PC (Clang 20+, see the top of the script for the packages):
 
    ```sh
-   cmake -S sdk -B out/host -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-   cmake --build out/host --target rexglue
+   tools/build_rexglue_wsl.sh
    ```
+
+   The result is `sdk/out/linux-amd64/rexglue`.
 
 5. **Translate the game**:
 
    ```sh
-   REXGLUE=out/host/rexglue tools/codegen.sh
+   REXGLUE=sdk/out/linux-amd64/rexglue tools/codegen.sh
    ```
+
+   About 7 minutes. Checked with the USA `default.xex`: 349 files (184 MB of C++), and `tools/direct_calls.py`
+   makes 142,521 calls direct, the same count nfs-carbon-recomp reports for its XEX.
 
 6. **Build the NRO**:
 
