@@ -103,6 +103,15 @@ if [ -x "$OBJDUMP" ]; then
 fi
 mkdir -p "$SDK/lib"
 cp "$LIB" "$SDK/lib/"
+# The merge into libvulkan.a runs the container's x86 "ar", whose LTO plugin chokes on the Rust objects
+# ("bfd plugin: ... failed to create LTO module"): the Rust standard library members (core, alloc, std) are
+# in the archive but missing from its symbol index, so the NRO link reported thousands of undefined
+# core::/alloc:: symbols. devkitA64's own ranlib rebuilds the index for AArch64.
+RANLIB=${DEVKITPRO:-/opt/devkitpro}/devkitA64/bin/aarch64-none-elf-ranlib
+if [ -x "$RANLIB" ]; then
+  "$RANLIB" "$SDK/lib/libvulkan.a"
+  echo "== libvulkan.a: symbol index rebuilt with devkitA64's ranlib"
+fi
 
 # The NRO also links expat and zstd (Mesa's dependencies). The build image already has them in its
 # devkitPro portlibs, so they are taken from there: the host's devkitPro does not need them installed.
