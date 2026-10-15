@@ -77,9 +77,17 @@ and about 16 GB of RAM for LTO.
    python tools/fase1_extraer.py path/to/NFSC.iso -o assets/game_root
    ```
 
-3. **NVK driver** — build [mesa-switch](https://github.com/danfromtico/mesa-switch) at commit `1a8c1a66d6f` with
-   `mesa/mesa-switch-nfsmw.patch` ([mesa/README.md](mesa/README.md)). You need its `opt/devkitpro/portlibs/switch`
-   folder, which contains `lib/libvulkan.a`.
+3. **NVK driver** — on Linux / WSL with Docker:
+
+   ```sh
+   tools/build_mesa_wsl.sh
+   ```
+
+   It clones [mesa-switch](https://github.com/danfromtico/mesa-switch) at commit `1a8c1a66d6f`, applies
+   `mesa/mesa-switch-nfsmw.patch`, builds it with mesa-switch's `build-switch.sh` (in a Docker container) and copies
+   the merged `libvulkan.a` to `out/mesa-sdk/lib`. That folder is the `REXGLUE_SWITCH_NVK_SDK` of step 6. The NRO
+   also links devkitPro's `switch-expat`, `switch-zlib` and `switch-zstd` packages. On Windows/MSYS2, see
+   [mesa/README.md](mesa/README.md).
 
 4. **Code generator** for your PC:
 
@@ -97,7 +105,7 @@ and about 16 GB of RAM for LTO.
 6. **Build the NRO**:
 
    ```sh
-   tools/build.sh /path/to/mesa-sdk/opt/devkitpro/portlibs/switch
+   tools/build.sh out/mesa-sdk
    ```
 
    or on Windows `powershell -ExecutionPolicy Bypass -File tools\build.ps1 -MesaSdk C:\path\to\...\portlibs\switch`.
