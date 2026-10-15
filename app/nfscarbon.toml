@@ -1,0 +1,64 @@
+# nfscarbon.toml - settings of nfscarbon-nx (Need for Speed: Carbon on the Nintendo Switch).
+#
+# Copy it next to the NRO: sdmc:/switch/nfscarbon-nx/nfscarbon.toml
+# Command-line arguments take precedence over this file.
+
+# --- Renderer ---------------------------------------------------------------
+# "carbon": native Vulkan renderer from nfs-carbon-recomp (reads the game's GPU
+#           command ring and draws it directly on NVK).
+# "xenos":  the SDK's Xenos GPU emulation. Much slower; only to compare images.
+nfscarbon_renderer = "carbon"
+
+# Frame rate cap applied when the game presents (0 = none). Carbon targets 30
+# on the Xbox 360; the Switch's three 1 GHz cores will not hold more for now.
+carbon_gpu_fps_cap = 30
+
+# Render resolution in percent of the game's 1280x720 (handheld: 100).
+carbon_gpu_render_scale = 100
+
+# Car reflection cube faces redrawn per frame (6 = all) and rear-view mirror at
+# half rate: the cheapest quality cuts the renderer offers.
+carbon_gpu_reflection_faces = 2
+carbon_gpu_mirror_half_rate = true
+
+# The 3-second command processor log line costs SD card writes.
+carbon_gpu_watchdog = false
+
+# Retail render mode 2 for the scene: one tile and no MSAA instead of the
+# Xbox 360's predicated tiling, which replays the whole scene per tile. Same
+# idea that gave nfsmw-nx most of its frame rate. Off until checked in game;
+# if it is wrong the hooks find the code does not match and leave it alone.
+carbon_single_pass = false
+carbon_scene_resolution = "1280x720"
+
+# --- Switch -----------------------------------------------------------------
+# GPU MHz asked from the system in handheld mode. 460.8 MHz is an official
+# Horizon profile (not an overclock). 0 = do not touch the clocks.
+nfscarbon_switch_gpu_mhz = 460
+nfscarbon_switch_ram_1600 = false
+
+# Area libnx shares with nvdrv for the bookkeeping of every GPU allocation.
+# libnx gives 8 MB; NFSMW ran out of it (error 0x235C) and ships 32.
+nfscarbon_switch_nvmap_mb = 32
+
+# FPS and resolution for Status Monitor / SaltyNX overlays.
+nfscarbon_switch_saltynx = true
+nfscarbon_switch_reverse_clocks = false
+
+# Mesa's own on-disk shader cache. The renderer already keeps its pipeline
+# cache in cache/carbon_gpu, so this would be a second copy on the SD card.
+nfscarbon_mesa_disk_cache = false
+# Extra Mesa/NVK variables, "VARIABLE=value;VARIABLE=value".
+nfscarbon_mesa_env = ""
+
+# --- Game -------------------------------------------------------------------
+# The game's D3D sleeps instead of spinning while it waits for ring space.
+nfscarbon_ring_wait = true
+nfscarbon_ring_wait_max_us = 1000
+
+# Calls to game functions the recompiler missed are skipped and written to
+# unregistered_targets.txt next to the NRO (send that file with bug reports).
+nfscarbon_tolerate_unregistered_calls = true
+
+# Face buttons by position (Xbox layout) instead of by letter.
+input_xbox_layout = false

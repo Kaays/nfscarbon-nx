@@ -1,0 +1,54 @@
+# ============================================================================
+#  nfscarbon-nx - manual declarations and code generator options
+#
+#  Included from nfscarbon_manifest.toml (includes = ["overrides.toml"]).
+#  Included files use the flat schema (sections at the root).
+#
+#  Root keys must stay ABOVE the first [section]: in TOML a loose key belongs
+#  to the last table opened, and the code generator would silently ignore it.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+#  PERFORMANCE (phase 2: turn on once the game boots and plays on the Switch)
+#
+#  These are the code generator options nfsmw-nx enabled for Most Wanted (see
+#  docs/toolchain.md there). They keep PowerPC registers in C++ locals instead
+#  of the context struct, which on the Switch's A57 cores was worth a lot of
+#  CPU (about 14 % of MW's main thread was spent in __savegprlr/__restgprlr
+#  alone). They were verified for MW, not for Carbon, so they start off:
+#
+#    cr_as_local            condition register
+#    non_volatile_as_local  r14-r31. Check first that no hook in app/src reads
+#                           r14-r31 from its caller, and how the game's
+#                           setjmp/longjmp behave (MW: Lua's longjmp).
+#    xer_as_local           carry/overflow
+#    ctr_as_local           count register
+#
+#  Our hooks only read r3-r5 and lr, so none of the four conflicts with them.
+#  Turn them on one at a time, run tools/codegen.sh, rebuild and play.
+# ----------------------------------------------------------------------------
+# cr_as_local = true
+# non_volatile_as_local = true
+# xer_as_local = true
+# ctr_as_local = true
+
+# ----------------------------------------------------------------------------
+#  FUNCTIONS DECLARED BY HAND
+#
+#  Key = start address (hex, in quotes). Fields, all optional: name, size or
+#  end, parent (discontiguous fragment), share_registers.
+#  Addresses logged in unregistered_targets.txt (app/src/dispatch_tolerance.cpp)
+#  can go in [entrypoint.functions] of nfscarbon_manifest.toml instead.
+# ----------------------------------------------------------------------------
+[functions]
+
+# ----------------------------------------------------------------------------
+#  Host CRT replacements (phase 2)
+#
+#  The game's memcpy/memset/memmove/strncpy replaced by the host's. The
+#  addresses must be identified in Carbon's default.xex by reading the
+#  generated code (MW's were 0x826BE1B0, 0x826BE610, 0x826BDD90, 0x826B9660:
+#  they do NOT apply here).
+# ----------------------------------------------------------------------------
+# [rexcrt]
+# memcpy = 0x........
