@@ -95,3 +95,15 @@ Constants stay 24-59 MiB per frame after sizing them to the shader: Carbon's sha
 nearly every draw really uploads ~4 KiB per stage. Next: upload only the constants the game changed.
 
 Shadows trailing the car: not `skip_redundant_resolves`, `mirror_half_rate` or `reflection_faces`.
+
+## Session 5 (2026-10-16), fps cap fixed
+
+Race Wars 12.9-13.1 fps (was 9-11), swap 1.3 ms (was 21-35), fps cap sleep 0. Canyon/menu 23-25.
+With `carbon_gpu_vertex_arena_mb = 0`: Race Wars 11.4-11.7 fps, shadows unchanged, so the arena is not the cause.
+Shadows trail less with `carbon_gpu_mirror_half_rate = false` and `carbon_gpu_reflection_faces = 6`, still there.
+
+Race Wars now: renderer thread draw 45-48 ms, GPU 38-44 ms per frame.
+
+Next build: code generator options on (`cr_as_local`, `non_volatile_as_local`, `xer_as_local`, `ctr_as_local`)
+and the function 0x822AF8A0 added. Checked on the PC: codegen runs (347 files), calls made direct 142,521 ->
+110,207 (the register save/restore helpers are gone), sample files and the hooks compile.
