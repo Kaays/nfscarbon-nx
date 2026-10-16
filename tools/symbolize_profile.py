@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Adds function names to a stack-sampling rex_perfil.log.
 
-    python3 tools/symbolize_profile.py rex_perfil.log [app/out/switch/nfscarbon.elf]
+    python3 tools/symbolize_profile.py rex_perfil.log [app/out/switch/nfscarbon]
 
 Writes rex_perfil_sym.log next to the input: every imagen+0x... gets the function it falls in, e.g.
 imagen+0x189cb4[sub_826C6AB0+0x1c4]. Use the ELF of the same build as the NRO that wrote the log
-(app/out/switch/nfscarbon.elf, the unstripped one).
+(app/out/switch/nfscarbon, the unstripped one, not nfscarbon.stripped.elf).
 
 Stack sampling is turned on by an empty file perfil_pilas.flag in sdmc:/switch/nfscarbon-nx/logs/rex/.
 """
@@ -18,7 +18,9 @@ if len(sys.argv) < 2:
     raise SystemExit(__doc__)
 log = sys.argv[1]
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-elf = sys.argv[2] if len(sys.argv) > 2 else os.path.join(root, "app", "out", "switch", "nfscarbon.elf")
+# The build leaves the unstripped executable as app/out/switch/nfscarbon (no extension); the .stripped.elf
+# next to it has no symbols.
+elf = sys.argv[2] if len(sys.argv) > 2 else os.path.join(root, "app", "out", "switch", "nfscarbon")
 if not os.path.isfile(elf):
     raise SystemExit(f"ELF not found: {elf}")
 dkp = os.environ.get("DEVKITPRO", "/opt/devkitpro")
