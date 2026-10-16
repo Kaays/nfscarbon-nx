@@ -11,6 +11,9 @@ out_directory_path = "generated/default"
 includes = ["overrides.toml"]
 
 [entrypoint.functions]
+# nfscarbon-nx: callback reached only through bctrl (from 0x822DB85C), right after the bctr that ends
+# sub_822AF860, so the analysis never saw it. Found by app/src/dispatch_tolerance.cpp on the console.
+0x822AF8A0 = {}
 0x8211DF18 = {}
 0x821641C8 = {}
 0x821641E8 = {}
