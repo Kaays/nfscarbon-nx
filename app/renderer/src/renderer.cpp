@@ -104,6 +104,28 @@ namespace carbon::gpu {
 std::atomic<bool> g_paused{false};
 }  // namespace carbon::gpu
 
+namespace {
+
+// Replaces 'target' with 'temp'. On Horizon (Switch) a rename fails when the target already exists
+// (FS PathAlreadyExists), unlike POSIX, so the first cache file ever written stayed forever: every
+// session loaded the 57 KiB pipeline cache of the very first boot and the 2-pipeline warm list,
+// recompiled everything again and skipped draws while it did (black countdown, missing road).
+void ReplaceFile(const std::filesystem::path& temp, const std::filesystem::path& target) {
+  std::error_code ec;
+  std::filesystem::rename(temp, target, ec);
+  if (ec) {
+    std::error_code ec_remove;
+    std::filesystem::remove(target, ec_remove);
+    ec.clear();
+    std::filesystem::rename(temp, target, ec);
+  }
+  if (ec) {
+    REXGPU_WARN("[carbon-gpu] could not replace {}: {}", target.string(), ec.message());
+  }
+}
+
+}  // namespace
+
 // Called by the app when it goes to the background: the command thread parks at
 // the next frame, so the game, the GPU and the SoC go quiet until it returns.
 extern "C" REX_GPU_PLUGIN_EXPORT void carbon_gpu_set_paused(int paused) {
@@ -566,7 +588,7 @@ void Renderer::SavePipelineCache() {
       return;
     }
   }
-  std::filesystem::rename(temp, pipeline_cache_path_, ec);
+  ReplaceFile(temp, pipeline_cache_path_);
   REXGPU_INFO("[carbon-gpu] saved pipeline cache ({} KiB)", size >> 10);
 }
 
@@ -1106,8 +1128,7 @@ void Renderer::SaveWarmList() {
       return;
     }
   }
-  std::error_code ec;
-  std::filesystem::rename(temp, warm_path_, ec);
+  ReplaceFile(temp, warm_path_);
 }
 
 void Renderer::RunPipelineWarmup() {

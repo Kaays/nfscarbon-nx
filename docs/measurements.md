@@ -1,0 +1,52 @@
+# Measurements on the console
+
+Every number here comes from the renderer's own stats (`carbon_gpu_stats`, one line per 5 s in
+`logs/nfscarbon_NNN.log`) and the SDK profiler (`logs/rex/rex_perfil.log`, per thread CPU). Stock clocks:
+CPU 1020 MHz, GPU 460.8 MHz, RAM 1331/1600 MHz. Target: 30 fps at stock.
+
+## Session 1 (2026-10-16), first build
+
+Edition: USA, Media ID `51D2B53F`. Settings: `nfscarbon.toml` as shipped (fps cap 30, render scale 100,
+reflection faces 2, mirror half rate).
+
+### Front end (main menu, ~1160 draws/frame)
+
+| setting | fps | GPU ms p50 | CP draw ms (incl. fence wait) |
+|---|---|---|---|
+| shipped | 25 | 23.8 | 23 (2.5) |
+| `carbon_gpu_render_scale = 50` | 30 | 12.0 | 20.5 (0) |
+| `carbon_single_pass = true` | 29 | 20.6 | 16 (7); draws/frame 1160 -> 455 |
+
+The menu is GPU bound: at half resolution it holds 30.
+
+### Race (Canyon, ~2000-2700 draws/frame)
+
+| setting | fps | GPU ms p50 | CP draw ms (fence wait) | CP swap ms |
+|---|---|---|---|---|
+| shipped | 16-20 | 30-38 | 28-35 (5-20) | 8-13 |
+| render scale 50 | 16-24 | 11-13 | 22-29 (0) | 5-13 |
+| single pass | 17 | 33 | 29 (2.5) | 12 |
+
+Both sides are over the 33.3 ms budget in a race:
+
+- **GPU**: ~35 ms at 1280x720. The biggest item is the 1280x720 scene pass with depth, **3 passes per frame**
+  (16-19 ms). `carbon_single_pass` did not change it in the race (still 3 passes, 1080-1360 draws), only in the
+  menu. To find out: whether those 3 passes are predicated-tiling strips (removable) or three different views.
+- **CPU, renderer thread ("GPU Commands")**: 22-29 ms recording draws even when the GPU is idle (render scale 50),
+  about 11 us per draw. 13-18 MiB are uploaded per frame (vertex data copied again every frame, ~1000-1600 arena
+  fetches per frame).
+- **CPU, game**: in the race the three cores are 174-253 % busy (of 300 %): GPU Commands 40-54 %, RWAudioCore Dac
+  38-49 % (10 % in the menu), Main XThread 33-47 %, XMA Decoder 11-16 %. The renderer also waits 2-15 ms per frame
+  on the game (`cp WAIT_REG_MEM`).
+
+### Problems seen
+
+- **Pipeline cache never grew past the first boot** (fixed): every session loaded the same 57 KiB cache and a
+  2-pipeline warm list, though each session saved 700-900 KiB. Horizon's rename fails when the target exists, so the
+  replace silently failed. Effect: all pipelines recompiled every session on a 1 GHz CPU, and draws skipped while
+  they compiled (`skipped per frame: pipeline=11` to `260`): black screen at the countdown, road appearing late,
+  missing loading animation.
+- **Intro videos slow, audio fine**: the intros are WMV (`MOVIES/*.wmv`), decoded by the game's own recompiled XDK
+  decoder. nfsmw-nx had the same problem and replaced that decoder with FFmpeg (its `nfsmw_video_wmv3.cpp`).
+- **Crackling audio in races, worse on crashes, also with overclock**: the host audio output shows no underruns
+  and no clipping (`rex_perfil.log`), so the noise is produced inside the game's mixer. Not explained yet.
