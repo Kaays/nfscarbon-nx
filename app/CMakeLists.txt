@@ -29,6 +29,8 @@ set(NFSCARBON_SOURCES
     src/render_mode_hook.cpp
     # Renderer choice, Mesa/NVK environment, nvdrv memory, GPU clock and overlays.
     src/nfscarbon_switch.cpp
+    # The game's two render threads sleep until the frame flag changes (no Sleep(0) loops).
+    src/frame_handoff_hook.cpp
 )
 
 # Native Vulkan renderer (renderer/): an OBJECT library linked into the NRO on

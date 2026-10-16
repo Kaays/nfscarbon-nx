@@ -119,3 +119,24 @@ Reads of registers before they are written in the generated code (nfsmw-nx's `to
 `non_volatile_as_local`, 160 functions take r23-r31 from the function that jumps to them (almost all exception
 handler chunks, `r12 = r31 + N`), and they got 0. With it off: none for cr/ctr/xer except setjmp (sub_8279D060,
 now `share_registers`). Next build: `non_volatile_as_local = false`, the other three on.
+
+## Session 7 (2026-10-16), three register options on
+
+Boots and plays with `cr_as_local`, `xer_as_local`, `ctr_as_local` (`non_volatile_as_local` off). Little change:
+
+| scene | fps | draws | renderer draw ms | fence wait ms | GPU ms p50 | frame ms p50/p95 |
+|---|---|---|---|---|---|---|
+| menu | 25 | 1409 | | | | |
+| Race Wars | 11-18 | 1900-3900 | 50 | 0.1 | 44 | 67/99 |
+| Canyon | 15-17 | 1300-2100 | 44 (of which 23 fence) | 23 | 35 | 50/67 |
+
+`rex_perfil.log`, Race Wars: CPU 272-295 % of 300: GPU Commands 77 %, XThread2F448080 73-79 %, RWAudioCore 41-64 %,
+Main XThread 37-44 %, XMA Decoder 15-27 %. The CPU is saturated. Canyon: 171-183 %, renderer waits 370-410 ms/s on
+GPU fences. Frame times land on multiples of 16.7 ms (vblank).
+
+Carbon has Most Wanted's frame handoff between its two render threads, with the same Sleep(0) loops
+(flag 0x82C651C4, preparer sub_824E9948, executor sub_824E9720, list 0x82B8C764; the only Sleep(0) calls in the
+game). nfsmw-nx measured 41 % of the preparer in those yields. Next build: nfsmw-nx's fix ported
+(`app/src/frame_handoff_hook.cpp`): sleep until the flag changes, executor sleeps instead of spinning on an empty
+list, both threads at priority 0x3A. `tools/codegen.sh` now starts from an empty folder, so newly hooked functions
+are not left called directly.

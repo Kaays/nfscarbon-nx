@@ -14,6 +14,10 @@ REXGLUE=${REXGLUE:-$ROOT/sdk/out/linux-amd64/rexglue}
 PY=${PYTHON:-python3}
 [ -f "$ROOT/assets/game_root/default.xex" ] || { echo "assets/game_root/default.xex not found: extract the game first"; exit 1; }
 cd "$APP"
+# Start from an empty folder. The code generator skips files whose inputs did not change, and
+# direct_calls.py only rewrites calls that are not direct yet: with the old files kept, a function hooked
+# since the last run would stay called as __imp__sub_X and its hook would be silently bypassed.
+rm -rf generated/default
 echo "== codegen"
 "$REXGLUE" codegen nfscarbon_manifest.toml > codegen.log 2>&1 || { echo "codegen failed, see app/codegen.log"; exit 1; }
 echo "== direct calls"
