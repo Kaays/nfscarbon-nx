@@ -538,6 +538,8 @@ class Renderer {
     double draw_s = 0, resolve_s = 0, swap_s = 0, fence_s = 0, worst_ms = 0;
     // Draw CPU time by phase (carbon_gpu_draw_profile) and upload bytes by kind.
     double phase_s[7] = {};
+    // Swap breakdown: command buffer end + queue submit, and the presenter call around it.
+    double submit_s = 0, present_s = 0;
     uint64_t upload_kind_bytes[5] = {};
     double gpu_total_s = 0, gpu_tag_s[5] = {};
     uint32_t gpu_frames = 0, gpu_passes = 0;

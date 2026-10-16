@@ -64,3 +64,21 @@ control at the start.
 
 Race Wars doubles to quadruples the draws (crowd, cars) and the renderer thread scales with them: CPU is the main
 limit there. Next measurement: where the draw time goes (`carbon_gpu_draw_profile`).
+
+## Session 3 (2026-10-16), draw CPU profile
+
+Intro videos (loading animation, EA logo) now play through, slowly. Shadows still trail the car for a moment;
+`carbon_gpu_skip_redundant_resolves = false` did not change that.
+
+Renderer thread, ms per frame (`carbon_gpu_draw_profile`):
+
+| scene | draws | state | pipeline | textures | indices | vertices | constants | record | swap |
+|---|---|---|---|---|---|---|---|---|---|
+| menu | 1160 | 1.2 | 1.0 | 2.8 | 6.5 | 2.5 | 2.9 | 4.2 | 4 |
+| Canyon | 1500-2100 | 1.1-1.6 | 1.0-1.3 | 3-4 | 1.6-2.3 | 2.7-3.7 | 2.2-3.0 | 4-5 | 10-14 |
+| Race Wars | 3400-3700 | 3.1 | 2.6 | 8.5 | 6.6 | 6.0 | 7.3 | 10.6 | 21-26 |
+
+About 13 us per draw spread over every phase (no single hot spot), plus a swap that grows with the draws
+(4 ms in the menu, 21-35 ms in Race Wars). Constant uploads were 4 KiB per draw and stage whatever the shader
+reads: 10.5 MiB per frame in the menu, 26-58 MiB in Race Wars. Now sized to the shader's constant count; the swap
+is split into submit and presenter to see what grows.

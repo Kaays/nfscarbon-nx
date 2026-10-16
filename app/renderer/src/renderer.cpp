@@ -715,6 +715,7 @@ void Renderer::EndFrame(bool present, const std::function<void(VkCommandBuffer)>
   }
   GpuStamp(kTagEnd);
   ts_valid_[frame_index_] = true;
+  const double submit_start = NowSeconds();
   dfn.vkEndCommandBuffer(f.upload_cb);
   dfn.vkEndCommandBuffer(f.cb);
   VkCommandBuffer cbs[2] = {f.upload_cb, f.cb};
@@ -728,6 +729,7 @@ void Renderer::EndFrame(bool present, const std::function<void(VkCommandBuffer)>
       REXGPU_ERROR("[carbon-gpu] vkQueueSubmit failed: {}", int(r));
     }
   }
+  stats_.submit_s += NowSeconds() - submit_start;
   f.submitted = true;
   frame_open_ = false;
   frame_index_ = (frame_index_ + 1) % kFramesInFlight;
@@ -2353,7 +2355,13 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
       dyn_offsets[stage] = uint32_t(last_constant_offset_[stage]);
       continue;
     }
-    UploadAllocation a = Upload(4096, ubo_alignment_);
+    // The descriptor range is 4 KiB, so the allocation can be as small as what the shader reads
+    // as long as those 4 KiB stay inside the chunk. Was always 4 KiB: 26-58 MiB per frame in
+    // Race Wars for ~3500-6900 draws, most of it never read.
+    VkDeviceSize need = AlignUp64(VkDeviceSize(std::max<uint32_t>(n, 1)) * 16, ubo_alignment_);
+    VkDeviceSize at = AlignUp64(chunk_offset_, ubo_alignment_);
+    if (current_chunk_ == UINT32_MAX || at + 4096 > chunk_size_) need = 4096;
+    UploadAllocation a = Upload(need, ubo_alignment_);
     if (n) {
       std::memcpy(a.ptr, &regs.values[kRegFloatConstants + stage * 1024], size_t(n) * 16);
     }
@@ -2826,6 +2834,7 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
   }
 
   bool submitted = false;
+  const double present_start = NowSeconds();
   if (presenter_) {
     presenter_->RefreshGuestOutput(
         out_w, out_h, display_w, display_h,
@@ -2846,6 +2855,7 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
   if (!submitted) {
     EndFrame(false, nullptr);
   }
+  stats_.present_s += NowSeconds() - present_start;
   if (dump_buffer) {
     const auto& dfn = vulkan_device_->functions();
     dfn.vkWaitForFences(vk_device_, 1, &frames_[dump_frame_slot].fence, VK_TRUE, UINT64_MAX);
@@ -2972,12 +2982,13 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
         REXGPU_INFO(
             "[carbon-gpu] draw cpu per frame ms: state {:.2f}, shaders+pipeline {:.2f}, textures {:.2f}, "
             "indices {:.2f}, vertices {:.2f}, constants {:.2f}, record {:.2f} | upload MiB per frame: "
-            "vertices {:.2f}, indices {:.2f}, constants {:.2f}, textures {:.2f}, other {:.2f}",
+            "vertices {:.2f}, indices {:.2f}, constants {:.2f}, textures {:.2f}, other {:.2f} | swap ms: "
+            "end+submit {:.2f}, presenter (incl. submit) {:.2f}",
             stats_.phase_s[0] * ms, stats_.phase_s[1] * ms, stats_.phase_s[2] * ms, stats_.phase_s[3] * ms,
             stats_.phase_s[4] * ms, stats_.phase_s[5] * ms, stats_.phase_s[6] * ms,
             stats_.upload_kind_bytes[0] * mib, stats_.upload_kind_bytes[1] * mib,
             stats_.upload_kind_bytes[2] * mib, stats_.upload_kind_bytes[3] * mib,
-            stats_.upload_kind_bytes[4] * mib);
+            stats_.upload_kind_bytes[4] * mib, stats_.submit_s * ms, stats_.present_s * ms);
       }
       if (stats_.gpu_frames) {
         std::vector<const PassAgg*> top;
