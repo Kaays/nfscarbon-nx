@@ -19,6 +19,8 @@
 #include <vector>
 
 #include <rex/chrono/clock.h>
+#include <rex/platform.h>
+#include <rex/thread.h>
 #include <rex/dbg.h>
 #include <rex/kernel/xboxkrnl/private.h>
 #include <rex/kernel/xboxkrnl/threading.h>
@@ -969,9 +971,21 @@ uint32_t xeKeKfAcquireSpinLock(PPCContext* ctx, X_KSPINLOCK* lock, bool change_i
   uint32_t pcr_addr = static_cast<uint32_t>(ctx->r13.u64);
   const uint32_t self = rex::byte_swap(pcr_addr);
   assert_true(lock->prcb_of_owner.value != self);  // self-deadlock detection
+  uint32_t spins = 0;
   while (!rex::thread::atomic_cas(0u, self, &lock->prcb_of_owner.value)) {
+#if REX_PLATFORM_SWITCH
+    // On Horizon a yield only lets threads of the same priority run. If the owner has a lower
+    // priority (a higher number) and shares this core, yielding forever never lets it release
+    // the lock (nfscarbon-nx froze with the game's audio mixer, raised to 0x39, at 100 % of a
+    // core, most likely in here). After a short spin, really sleep so the owner can run.
+    if (++spins > 64) {
+      rex::thread::Sleep(std::chrono::microseconds(20));
+      continue;
+    }
+#endif
     rex::thread::MaybeYield();
   }
+  (void)spins;
   return old_irql;
 }
 

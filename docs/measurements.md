@@ -198,3 +198,13 @@ which costs CPU). Stack samples: the Audio Worker spends 76 % of its samples ins
 bumped by every signal and a condition variable) so multi-object waits return as soon as an object is signaled,
 still rechecking at least every 1 ms. On the PC: wake latency 494-530 µs → 54-67 µs on average, results and
 timeouts unchanged.
+
+## Session 13 (2026-10-16), freeze at the start of a race
+
+With the WaitMultiple wakeups, the game reached the menus at 1785/921/2133 but froze when a race started: the
+renderer and the game threads went idle and "RWAudioCore Dac" (the mixer, at 0x39 since session 8) stayed at 100 %
+of a core. Most likely a guest spinlock: `xeKeKfAcquireSpinLock` spun with `sched_yield`, and on Horizon a yield
+only lets threads of the same priority run, so a lower-priority owner (0x3B) on the same core never releases it.
+The new wakeup timing made the race more likely. Fixes: the spinlock really sleeps (20 µs) after 64 failed tries on
+the Switch, and the mixer priority is off by default (`nfscarbon_audio_mixer_priority = 0`), since it never
+reduced the missing blocks.

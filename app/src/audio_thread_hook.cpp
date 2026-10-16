@@ -12,6 +12,10 @@
 // before. 0x39 is one step above the handoff threads; the SDK's own audio threads (XMA decoder, audio
 // worker) are at 0x2B. Horizon does not time-slice below 0x3B, which is safe only because the mixer
 // blocks on its own between blocks (it is at 40-65 % of a core).
+//
+// Off by default since session 13: it did not reduce the missing blocks, and with the mixer at 0x39
+// the game froze at the start of a race with the mixer at 100 % of a core, most likely spinning on a
+// guest spinlock (xeKeKfAcquireSpinLock yielded, which on Horizon never lets a 0x3B owner run).
 
 #include <cstdint>
 
@@ -26,7 +30,7 @@
 extern "C" bool RexSwitchSetCurrentThreadPriorityOk(int priority);
 #endif
 
-REXCVAR_DEFINE_INT32(nfscarbon_audio_mixer_priority, 0x39, "Carbon",
+REXCVAR_DEFINE_INT32(nfscarbon_audio_mixer_priority, 0, "Carbon",
                      "Switch: Horizon priority of the game's audio mixer thread (RWAudioCore Dac). "
                      "0 = leave it at 0x3B like the rest of the game")
     .range(0, 0x3B)
