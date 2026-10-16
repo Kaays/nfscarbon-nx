@@ -107,3 +107,15 @@ Race Wars now: renderer thread draw 45-48 ms, GPU 38-44 ms per frame.
 Next build: code generator options on (`cr_as_local`, `non_volatile_as_local`, `xer_as_local`, `ctr_as_local`)
 and the function 0x822AF8A0 added. Checked on the PC: codegen runs (347 files), calls made direct 142,521 ->
 110,207 (the register save/restore helpers are gone), sample files and the hooks compile.
+
+## Session 6 (2026-10-16), boot crash with the register options
+
+With all four options on, the game crashed at boot right after loading the pipeline cache:
+`Unhandled guest access violation: read of guest 0x00000064` (null pointer + 100). The second test meant to have
+`non_volatile_as_local` off ran the same binary (same module id in both crash reports): the option is read by the
+code generator, so it needs codegen and a full build.
+
+Reads of registers before they are written in the generated code (nfsmw-nx's `tools/lee_antes.py`): with
+`non_volatile_as_local`, 160 functions take r23-r31 from the function that jumps to them (almost all exception
+handler chunks, `r12 = r31 + N`), and they got 0. With it off: none for cr/ctr/xer except setjmp (sub_8279D060,
+now `share_registers`). Next build: `non_volatile_as_local = false`, the other three on.

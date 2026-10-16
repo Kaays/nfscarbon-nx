@@ -26,11 +26,19 @@
 #
 #  Our hooks only read r3-r5 and lr (checked: no ctx.r14-r31, cr, xer or ctr in
 #  app/src or app/renderer), so none of the four conflicts with them.
-#  Turned on together on 2026-10-16 after the first playable build; if the game
-#  breaks, turn non_volatile_as_local off first (setjmp/longjmp), then the rest.
+#  Turned on together on 2026-10-16 after the first playable build.
+#
+#  non_volatile_as_local is OFF: with it the game crashed at boot (guest read of
+#  0x64, a null pointer + 100). Reading the generated code for registers used
+#  before they are written (nfsmw-nx's tools/lee_antes.py) found 160 functions
+#  that receive r23-r31 from the function that jumps to them, almost all
+#  exception-handler chunks ("r12 = r31 + N"). With the option on they get 0.
+#  nfsmw-nx marks such chunks share_registers; here there are too many to check
+#  one by one, so the option stays off. With it off, the same scan finds no
+#  cr/ctr/xer read before write except setjmp (marked below).
 # ----------------------------------------------------------------------------
 cr_as_local = true
-non_volatile_as_local = true
+non_volatile_as_local = false
 xer_as_local = true
 ctr_as_local = true
 
@@ -43,6 +51,11 @@ ctr_as_local = true
 #  can go in [entrypoint.functions] of nfscarbon_manifest.toml instead.
 # ----------------------------------------------------------------------------
 [functions]
+
+# setjmp: saves every register, including cr1-cr7, into the jmp_buf. With
+# cr_as_local its cr fields are its own (zero) locals; share_registers makes the
+# caller pass its cr through ctx, so the jmp_buf gets the real values.
+"0x8279D060" = { share_registers = true }
 
 # ----------------------------------------------------------------------------
 #  Host CRT replacements (phase 2)
