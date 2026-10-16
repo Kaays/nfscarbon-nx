@@ -504,6 +504,8 @@ class Renderer {
   VkDeviceSize last_constant_offset_[2] = {};
   uint32_t last_constant_chunk_[2] = {UINT32_MAX, UINT32_MAX};
   uint32_t last_constant_count_[2] = {};
+  // Layout of the last upload: the packed shader's register map, or null for registers 0..n-1.
+  const std::vector<uint16_t>* last_constant_map_[2] = {};
 
   // Statistics (logged periodically).
   enum SkipReason : uint32_t {
@@ -541,6 +543,10 @@ class Renderer {
     // Swap breakdown: command buffer end + queue submit, and the presenter call around it.
     double submit_s = 0, present_s = 0, cap_sleep_s = 0;
     uint64_t upload_kind_bytes[5] = {};
+    // Float constant uploads: by packed shaders, by relatively addressed ones (whole 4 KiB), and
+    // the bytes the packed ones saved against uploading registers 0..highest read.
+    uint32_t const_uploads_packed = 0, const_uploads_full = 0;
+    uint64_t const_bytes_saved = 0;
     double gpu_total_s = 0, gpu_tag_s[5] = {};
     uint32_t gpu_frames = 0, gpu_passes = 0;
     uint32_t slow25 = 0, slow34 = 0, slow50 = 0;

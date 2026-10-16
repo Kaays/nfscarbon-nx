@@ -46,8 +46,11 @@ struct TranslatedShader {
   uint32_t vfetch_computed[3] = {};
   std::vector<TextureBinding> textures;
   uint32_t texture_descriptor_count = 0;
-  // Highest float constant index read (+1), 256 if relatively addressed.
+  // Float constants in the uniform block: 256 if relatively addressed (register r in slot r),
+  // otherwise packed (slot k holds register float_constant_map[k]).
   uint32_t float_constant_count = 0;
+  bool float_constants_compact = false;
+  std::vector<uint16_t> float_constant_map;
 
   // Outputs.
   uint32_t interpolators_written = 0;  // VS, bit per interpolator

@@ -172,3 +172,15 @@ uploaded every frame, 3 textures, 25-27 ms per frame, through the generic per-bl
 swap and a format switch per texel). Fast path added for formats without conversion: contiguous runs copied at once
 with a word-wise endian swap (whole rows when linear, 8-texel / 16-byte groups when tiled). Checked against the generic
 loop for 1-16 bytes per block, every endian swap and odd sizes/offsets; about 10x faster on the PC.
+
+## Session 11 (2026-10-16), float constants packed
+
+Stack samples at stock clocks in Race Wars: the mixer thread mixes for ~76 % of its samples and waits for its next
+block for the rest; it double-buffers 256-sample blocks (sub_826C6AB0), so it is at most ~10 ms ahead. Being
+tested: `nfscarbon_audio_mixer_priority = 43` (0x2B, above the renderer at 0x2C).
+
+Next build: shaders that read float constants only with static indices get them packed (slot k = register
+`float_constant_map[k]`), so a draw uploads only the registers its shaders read instead of c0 up to the highest one
+(~4 KiB per stage, 25-60 MiB per frame in Race Wars). Shaders with relative addressing keep the whole 256. New log
+line: `float constants per frame: N packed uploads, M full, X MiB saved`. The translated GLSL changes, so every
+shader is compiled again once (stutter in the first scenes after updating).

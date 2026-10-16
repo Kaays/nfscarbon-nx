@@ -2350,8 +2350,13 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
   for (uint32_t stage = 0; stage < 2; ++stage) {
     Shader* s = stage == 0 ? vs : ps;
     uint32_t n = s ? s->translated.float_constant_count : 0;
+    const std::vector<uint16_t>* map =
+        s && s->translated.float_constants_compact ? &s->translated.float_constant_map : nullptr;
+    // A packed upload only fits a shader with the same map; a plain one any shader reading fewer.
+    const bool same_layout = map ? last_constant_map_[stage] == map
+                                 : (!last_constant_map_[stage] && last_constant_count_[stage] >= n);
     if (!float_constants_dirty_[stage] && last_constant_chunk_[stage] == current_chunk_ &&
-        last_constant_count_[stage] >= n) {
+        same_layout) {
       dyn_offsets[stage] = uint32_t(last_constant_offset_[stage]);
       continue;
     }
@@ -2362,9 +2367,22 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
     VkDeviceSize at = AlignUp64(chunk_offset_, ubo_alignment_);
     if (current_chunk_ == UINT32_MAX || at + 4096 > chunk_size_) need = 4096;
     UploadAllocation a = Upload(need, ubo_alignment_);
-    if (n) {
-      std::memcpy(a.ptr, &regs.values[kRegFloatConstants + stage * 1024], size_t(n) * 16);
+    const uint32_t* src_consts = &regs.values[kRegFloatConstants + stage * 1024];
+    if (map) {
+      uint8_t* out = a.ptr;
+      for (uint16_t r : *map) {
+        std::memcpy(out, src_consts + uint32_t(r) * 4, 16);
+        out += 16;
+      }
+      ++stats_.const_uploads_packed;
+      if (!map->empty()) {
+        stats_.const_bytes_saved += (uint64_t(map->back()) + 1 - map->size()) * 16;
+      }
+    } else if (n) {
+      std::memcpy(a.ptr, src_consts, size_t(n) * 16);
+      ++stats_.const_uploads_full;
     }
+    last_constant_map_[stage] = map;
     dyn_offsets[stage] = uint32_t(a.offset);
     last_constant_offset_[stage] = a.offset;
     last_constant_chunk_[stage] = a.chunk;
@@ -2981,6 +2999,11 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
           debug_mode_, (now - stats_start_) * 1000.0 / frames, stats_.worst_ms, stats_.slow25, stats_.slow34,
           stats_.slow50, stats_.draw_s * 1000.0 / frames, stats_.resolve_s * 1000.0 / frames,
           stats_.swap_s * 1000.0 / frames, stats_.fence_s * 1000.0 / frames);
+      REXGPU_INFO(
+          "[carbon-gpu] float constants per frame: {:.0f} packed uploads, {:.0f} full (relative "
+          "addressing), {:.2f} MiB saved by packing",
+          stats_.const_uploads_packed / frames, stats_.const_uploads_full / frames,
+          double(stats_.const_bytes_saved) / frames / (1024.0 * 1024.0));
       if (REXCVAR_GET(carbon_gpu_draw_profile)) {
         const double ms = 1000.0 / frames;
         const double mib = 1.0 / frames / (1024.0 * 1024.0);

@@ -108,8 +108,12 @@ class Translator {
       float_const_relative_ = true;
       return fmt::format("{}[({} + {}) & 255]", block, a0_relative ? "a0" : "aL", index);
     }
+    index &= 255;
     max_const_ = std::max(max_const_, index + 1);
-    return fmt::format("{}[{}]", block, index);
+    const_used_[index >> 6] |= uint64_t(1) << (index & 63);
+    // Placeholder: the slot is chosen at the end, once it is known whether the shader also
+    // addresses constants relatively (then they keep their register index).
+    return fmt::format("{}[\x01{}\x02]", block, index);
   }
 
   // Source register expression for ALU operand i (1-3), before swizzling.
@@ -179,6 +183,7 @@ class Translator {
   bool uses_relative_temps_ = false;
   uint32_t max_const_ = 0;
   bool float_const_relative_ = false;
+  uint64_t const_used_[4] = {};
 
   TranslatedShader result_;
 };
@@ -1100,8 +1105,36 @@ TranslatedShader Translator::Run() {
   }
 
   result_.temp_count = uses_relative_temps_ ? 64 : std::max<uint32_t>(max_temp_, 1);
-  result_.float_constant_count = float_const_relative_ ? 256 : max_const_;
-  result_.body = std::move(out_);
+  // Constants read only with static indices are packed: the shader reads slot k, and the renderer
+  // uploads only the registers in float_constant_map. Carbon's shaders read a few registers spread
+  // over c0-c255; uploading the whole prefix was ~4 KiB per stage per draw. With relative
+  // addressing every register keeps its own index.
+  std::vector<uint16_t> slot_of(256, 0);
+  const bool compact = !float_const_relative_;
+  if (compact) {
+    for (uint32_t r = 0; r < 256; ++r) {
+      if (const_used_[r >> 6] & (uint64_t(1) << (r & 63))) {
+        slot_of[r] = uint16_t(result_.float_constant_map.size());
+        result_.float_constant_map.push_back(uint16_t(r));
+      }
+    }
+  }
+  std::string body;
+  body.reserve(out_.size());
+  for (size_t i = 0; i < out_.size(); ++i) {
+    if (out_[i] != '\x01') {
+      body += out_[i];
+      continue;
+    }
+    size_t end = out_.find('\x02', i);
+    uint32_t reg = uint32_t(std::stoul(out_.substr(i + 1, end - i - 1)));
+    body += std::to_string(compact ? slot_of[reg] : reg);
+    i = end;
+  }
+  result_.float_constants_compact = compact;
+  result_.float_constant_count =
+      float_const_relative_ ? 256 : uint32_t(result_.float_constant_map.size());
+  result_.body = std::move(body);
   result_.valid = true;
   return result_;
 }
