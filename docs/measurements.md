@@ -50,3 +50,17 @@ Both sides are over the 33.3 ms budget in a race:
   decoder. nfsmw-nx had the same problem and replaced that decoder with FFmpeg (its `nfsmw_video_wmv3.cpp`).
 - **Crackling audio in races, worse on crashes, also with overclock**: the host audio output shows no underruns
   and no clipping (`rex_perfil.log`), so the noise is produced inside the game's mixer. Not explained yet.
+
+## Session 2 (2026-10-16), pipeline cache fix
+
+Second boot after the fix: `loaded pipeline cache (1509 KiB)`, `pipeline warm-up: 119 pipelines queued`,
+no draws skipped for pipelines. Canyon race and road textures fixed; a short freeze remains when the player takes
+control at the start.
+
+| scene | fps | draws/frame | upload MiB/frame | GPU ms p50 | CP draw ms | CP swap ms |
+|---|---|---|---|---|---|---|
+| Canyon race | 15-18 | 1300-1950 | 9-13 | 34-40 | 31-39 | 10-14 |
+| Race Wars (crowded) | 6-12 | 3500-7000 | 28-65 | 38-46 | 38-84 | 19-35 |
+
+Race Wars doubles to quadruples the draws (crowd, cars) and the renderer thread scales with them: CPU is the main
+limit there. Next measurement: where the draw time goes (`carbon_gpu_draw_profile`).

@@ -536,11 +536,16 @@ class Renderer {
     uint64_t upload_bytes = 0, arena_bytes = 0, arena_draws = 0, chunk_vertex_draws = 0;
     uint32_t evicted = 0, throttled = 0;
     double draw_s = 0, resolve_s = 0, swap_s = 0, fence_s = 0, worst_ms = 0;
+    // Draw CPU time by phase (carbon_gpu_draw_profile) and upload bytes by kind.
+    double phase_s[7] = {};
+    uint64_t upload_kind_bytes[5] = {};
     double gpu_total_s = 0, gpu_tag_s[5] = {};
     uint32_t gpu_frames = 0, gpu_passes = 0;
     uint32_t slow25 = 0, slow34 = 0, slow50 = 0;
     uint32_t skip[kSkipReasonCount] = {};
   } stats_;
+  // What the next Upload() calls are for (UploadKind), for the per-kind byte counters.
+  uint32_t upload_kind_ = 4;
   void Skip(SkipReason reason) {
     ++stats_.draws_skipped;
     ++stats_.skip[reason];

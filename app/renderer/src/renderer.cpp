@@ -88,6 +88,9 @@ REXCVAR_DEFINE_INT32(carbon_gpu_render_scale, 100, "CarbonGPU",
     .range(25, 200);
 REXCVAR_DEFINE_BOOL(carbon_gpu_debug_cycle, false, "CarbonGPU",
                     "Debug: every 10 s cycle between normal, skipping small post passes, skipping the main scene, and both");
+REXCVAR_DEFINE_BOOL(carbon_gpu_draw_profile, true, "CarbonGPU",
+                    "Log where the renderer thread spends its draw time (state, pipeline, textures, "
+                    "indices, vertices, constants, recording) and upload bytes by kind");
 REXCVAR_DEFINE_BOOL(carbon_gpu_dump_shaders, false, "CarbonGPU",
                     "Write the generated GLSL of every translated shader to <cache>/carbon_gpu/glsl");
 
@@ -807,6 +810,7 @@ Renderer::UploadAllocation Renderer::Upload(VkDeviceSize size, VkDeviceSize alig
   UploadChunk& c = upload_chunks_[current_chunk_];
   chunk_offset_ = offset + size;
   stats_.upload_bytes += size;
+  stats_.upload_kind_bytes[upload_kind_ < 5 ? upload_kind_ : 4] += size;
   return {c.mapped + offset, c.buffer, offset, current_chunk_};
 }
 
@@ -1756,6 +1760,17 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
     double start = NowSeconds();
     ~FrameTimer() { total += NowSeconds() - start; }
   } frame_draw_timer{frame_draw_s_};
+  // Phase clock: each Mark(p) charges the time since the previous mark to phase p.
+  const bool profile = REXCVAR_GET(carbon_gpu_draw_profile);
+  double phase_t = profile ? NowSeconds() : 0.0;
+  auto Mark = [&](int p) {
+    if (profile) {
+      double n = NowSeconds();
+      stats_.phase_s[p] += n - phase_t;
+      phase_t = n;
+    }
+  };
+  upload_kind_ = 4;
   using namespace rex::graphics;
   if (!BeginFrame()) {
     return;
@@ -1997,6 +2012,7 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
     }
   }
 
+  Mark(0);  // state, render targets (and the fence wait of a new frame)
   // Shaders.
   auto program_cntl = regs.Get<reg::SQ_PROGRAM_CNTL>();
   uint32_t interpolators = std::min<uint32_t>(16, program_cntl.vs_export_count + 1);
@@ -2117,6 +2133,7 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
     return;
   }
 
+  Mark(1);  // shaders and pipeline
   // ---- Uploads (all in one chunk) ----
   // Only the header is cleared: the per-fetch arrays are written for the entries
   // the shaders use, and only those entries are uploaded.
@@ -2155,6 +2172,8 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
   estimate += VkDeviceSize(info.index_count) * 8 + 64;
   ReserveUpload(std::min(estimate, chunk_size_ - 2048));
 
+  Mark(0);
+  upload_kind_ = 3;
   // Textures (may record uploads in the upload command buffer).
   VkDescriptorSet vs_set = VK_NULL_HANDLE, ps_set = VK_NULL_HANDLE;
   BindTextures(regs, vs, 1, consts, vs_set);
@@ -2162,6 +2181,8 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
     BindTextures(regs, ps, 2, consts, ps_set);
   }
 
+  Mark(2);  // textures
+  upload_kind_ = 1;
   // Indices.
   uint32_t host_count = info.index_count;
   bool host_indexed = false;
@@ -2242,6 +2263,8 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
       vertex_range.max_index = hi_i + index_offset_v;
     }
   }
+  Mark(3);  // indices and the vertex range
+  upload_kind_ = 0;
   if (!SetupVertexData(regs, vs, consts, vertex_range)) {
     // Chunk switched mid-way; retry once in the fresh chunk.
     if (!SetupVertexData(regs, vs, consts, vertex_range)) {
@@ -2318,6 +2341,8 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
     return;
   }
 
+  Mark(4);  // vertices (and indices of expanded primitives)
+  upload_kind_ = 2;
   // Constants.
   uint32_t dyn_offsets[3];
   for (uint32_t stage = 0; stage < 2; ++stage) {
@@ -2378,6 +2403,8 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
         scissor.extent.width, scissor.extent.height, consts.vtx[0], consts.ndc_scale[0],
         consts.ndc_scale[1], consts.ndc_offset[0], consts.ndc_offset[1]);
   }
+  Mark(5);  // constants
+  upload_kind_ = 4;
   // ---- Record ----
   bool same_pass = rendering_;
   if (same_pass) {
@@ -2495,6 +2522,7 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
   } else {
     dfn.vkCmdDraw(cb, host_count, 1, 0, 0);
   }
+  Mark(6);  // Vulkan recording
 }
 
 // ---------------------------------------------------------------------------
@@ -2938,6 +2966,19 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
           debug_mode_, (now - stats_start_) * 1000.0 / frames, stats_.worst_ms, stats_.slow25, stats_.slow34,
           stats_.slow50, stats_.draw_s * 1000.0 / frames, stats_.resolve_s * 1000.0 / frames,
           stats_.swap_s * 1000.0 / frames, stats_.fence_s * 1000.0 / frames);
+      if (REXCVAR_GET(carbon_gpu_draw_profile)) {
+        const double ms = 1000.0 / frames;
+        const double mib = 1.0 / frames / (1024.0 * 1024.0);
+        REXGPU_INFO(
+            "[carbon-gpu] draw cpu per frame ms: state {:.2f}, shaders+pipeline {:.2f}, textures {:.2f}, "
+            "indices {:.2f}, vertices {:.2f}, constants {:.2f}, record {:.2f} | upload MiB per frame: "
+            "vertices {:.2f}, indices {:.2f}, constants {:.2f}, textures {:.2f}, other {:.2f}",
+            stats_.phase_s[0] * ms, stats_.phase_s[1] * ms, stats_.phase_s[2] * ms, stats_.phase_s[3] * ms,
+            stats_.phase_s[4] * ms, stats_.phase_s[5] * ms, stats_.phase_s[6] * ms,
+            stats_.upload_kind_bytes[0] * mib, stats_.upload_kind_bytes[1] * mib,
+            stats_.upload_kind_bytes[2] * mib, stats_.upload_kind_bytes[3] * mib,
+            stats_.upload_kind_bytes[4] * mib);
+      }
       if (stats_.gpu_frames) {
         std::vector<const PassAgg*> top;
         for (auto& kv : pass_agg_) top.push_back(&kv.second);
