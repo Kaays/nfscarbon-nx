@@ -152,3 +152,11 @@ Race Wars 13-339 per 10 s, Canyon and menu 0. The previous build had the same in
 thread "RWAudioCore Dac" (40-67 % CPU) runs at 0x3B with the CPU at 270-290 %, and the handoff threads at 0x3A now
 preempt it. Next build: the mixer at 0x39 (`app/src/audio_thread_hook.cpp`, thread entry sub_826C6CD0, created by
 sub_826C6358 with the name at 0x820510B8).
+
+## Session 9 (2026-10-16), mixer at 0x39
+
+`[audio] mixer thread (RWAudioCore Dac) at priority 0x39 (accepted)`, yet Race Wars still misses 25-453 blocks
+per 10 s (mixed 1427-1855 of 1880). With priority it is not starved of CPU, and it stays at 53-67 %: it is waiting
+on something else (another thread, a lock or the XMA decoder). Next: stack sampling of that thread
+(`perfil_pilas.flag`, names added with `tools/symbolize_profile.py`). Shadow seen in the user's video: a dark patch
+beside and behind the car, apart from the car's own shadow.
