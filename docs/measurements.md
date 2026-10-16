@@ -82,3 +82,16 @@ About 13 us per draw spread over every phase (no single hot spot), plus a swap t
 (4 ms in the menu, 21-35 ms in Race Wars). Constant uploads were 4 KiB per draw and stage whatever the shader
 reads: 10.5 MiB per frame in the menu, 26-58 MiB in Race Wars. Now sized to the shader's constant count; the swap
 is split into submit and presenter to see what grows.
+
+## Session 4 (2026-10-16), swap breakdown: the fps cap overslept
+
+Race Wars swap 25-35 ms per frame, of which submit 0.1 ms and presenter 0.8-1 ms. The rest was the fps cap
+(`carbon_gpu_fps_cap = 30`): when a frame was more than two periods late it restarted the schedule from now and then
+added a full period, so it slept 33 ms. Frames of 70 ms became ~103 ms (9.7 fps instead of 14.3), and at 50 ms
+work one frame in four slept (15.7 instead of 20 fps). Simulated old vs fixed: 40 ms work 21.7 -> 25.0 fps,
+50 ms 15.7 -> 20.0, 70 ms 9.7 -> 14.3. Fixed: a late frame restarts the schedule without sleeping.
+
+Constants stay 24-59 MiB per frame after sizing them to the shader: Carbon's shaders declare ~250 constants, so
+nearly every draw really uploads ~4 KiB per stage. Next: upload only the constants the game changed.
+
+Shadows trailing the car: not `skip_redundant_resolves`, `mirror_half_rate` or `reflection_faces`.

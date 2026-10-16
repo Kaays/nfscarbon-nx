@@ -2893,12 +2893,17 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
   if (fps_cap_ > 0) {
     const double period = 1.0 / double(fps_cap_);
     double t = NowSeconds();
+    // Behind schedule (a slow frame): start over from now without waiting. It used to restart
+    // from now and then add a full period, so every frame slower than two periods slept 33 ms
+    // more (Race Wars: 25-35 ms of 'swap' per frame), and at 15-20 fps one frame in four did.
     if (cap_next_ == 0.0 || t - cap_next_ > period * 2.0) {
       cap_next_ = t;
+    } else {
+      cap_next_ += period;
     }
-    cap_next_ += period;
     if (t < cap_next_) {
       std::this_thread::sleep_for(std::chrono::duration<double>(cap_next_ - t));
+      stats_.cap_sleep_s += NowSeconds() - t;
     }
   }
 
@@ -2983,12 +2988,12 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
             "[carbon-gpu] draw cpu per frame ms: state {:.2f}, shaders+pipeline {:.2f}, textures {:.2f}, "
             "indices {:.2f}, vertices {:.2f}, constants {:.2f}, record {:.2f} | upload MiB per frame: "
             "vertices {:.2f}, indices {:.2f}, constants {:.2f}, textures {:.2f}, other {:.2f} | swap ms: "
-            "end+submit {:.2f}, presenter (incl. submit) {:.2f}",
+            "end+submit {:.2f}, presenter (incl. submit) {:.2f}, fps cap sleep {:.2f}",
             stats_.phase_s[0] * ms, stats_.phase_s[1] * ms, stats_.phase_s[2] * ms, stats_.phase_s[3] * ms,
             stats_.phase_s[4] * ms, stats_.phase_s[5] * ms, stats_.phase_s[6] * ms,
             stats_.upload_kind_bytes[0] * mib, stats_.upload_kind_bytes[1] * mib,
             stats_.upload_kind_bytes[2] * mib, stats_.upload_kind_bytes[3] * mib,
-            stats_.upload_kind_bytes[4] * mib, stats_.submit_s * ms, stats_.present_s * ms);
+            stats_.upload_kind_bytes[4] * mib, stats_.submit_s * ms, stats_.present_s * ms, stats_.cap_sleep_s * ms);
       }
       if (stats_.gpu_frames) {
         std::vector<const PassAgg*> top;
