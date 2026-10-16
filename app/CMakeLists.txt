@@ -88,7 +88,11 @@ if(REXGLUE_PLATFORM_SWITCH)
 
     # Homebrew Menu icon: a 256x256 JPEG (original artwork, no game assets).
     # Without it the NRO gets libnx's default icon.
-    set(NFSCARBON_ICON "${CMAKE_CURRENT_SOURCE_DIR}/../tools/switch/icon/nfscarbon_icon.jpg")
+    # A personal icon in nfscarbon_icon_local.jpg (ignored by git, tools/make_icon.py) takes precedence.
+    set(NFSCARBON_ICON "${CMAKE_CURRENT_SOURCE_DIR}/../tools/switch/icon/nfscarbon_icon_local.jpg")
+    if(NOT EXISTS "${NFSCARBON_ICON}")
+        set(NFSCARBON_ICON "${CMAKE_CURRENT_SOURCE_DIR}/../tools/switch/icon/nfscarbon_icon.jpg")
+    endif()
     set(NFSCARBON_ICON_ARG)
     if(EXISTS "${NFSCARBON_ICON}")
         set(NFSCARBON_ICON_ARG ICON "${NFSCARBON_ICON}")

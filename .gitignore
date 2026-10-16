@@ -31,3 +31,6 @@ __pycache__/
 *.pyc
 .vs/
 .vscode/
+
+# --- Personal icon (may be made from copyrighted art: never published) ---------
+tools/switch/icon/nfscarbon_icon_local.jpg
