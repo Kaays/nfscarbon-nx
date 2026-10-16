@@ -160,3 +160,15 @@ per 10 s (mixed 1427-1855 of 1880). With priority it is not starved of CPU, and 
 on something else (another thread, a lock or the XMA decoder). Next: stack sampling of that thread
 (`perfil_pilas.flag`, names added with `tools/symbolize_profile.py`). Shadow seen in the user's video: a dark patch
 beside and behind the car, apart from the car's own shadow.
+
+## Session 10 (2026-10-16), overclock as a measurement
+
+User's results: CPU 1785 / GPU 921 / RAM 2133: 30 fps in many places. CPU 1963 / GPU 1152 / RAM 2133: steady 30.
+CPU 1683 / GPU 844 / RAM 2133: 25-30. Race Wars sound is fine with the overclock, intro videos play at normal speed.
+So the audio is a whole-CPU problem, not the mixer's priority.
+
+Intro videos (stack samples at 1683 MHz): 71 % of the renderer thread in UploadTexture. The video planes are
+uploaded every frame, 3 textures, 25-27 ms per frame, through the generic per-block decode (tiled offset, byte-by-byte
+swap and a format switch per texel). Fast path added for formats without conversion: contiguous runs copied at once
+with a word-wise endian swap (whole rows when linear, 8-texel / 16-byte groups when tiled). Checked against the generic
+loop for 1-16 bytes per block, every endian swap and odd sizes/offsets; about 10x faster on the PC.

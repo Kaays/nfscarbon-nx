@@ -522,6 +522,32 @@ uint64_t GetHostTextureSize(const GuestTexture& t, const TextureFormatInfo& info
   return offset;
 }
 
+// Copies n guest bytes starting at addr with the texture's endian swap (address XOR). Runs that
+// start on a 4-byte boundary go a word at a time.
+inline void CopySwapped(const uint8_t* mem, uint32_t addr, uint32_t n, uint32_t xor_mask, uint8_t* out) {
+  const uint8_t* src = mem + (addr & 0x1FFFFFFF);
+  if (xor_mask == 0) {
+    std::memcpy(out, src, n);
+    return;
+  }
+  uint32_t i = 0;
+  if ((addr & 3) == 0) {
+    for (; i + 4 <= n; i += 4) {
+      uint32_t w;
+      std::memcpy(&w, src + i, 4);
+      switch (xor_mask) {
+        case 1: w = ((w & 0x00FF00FFu) << 8) | ((w >> 8) & 0x00FF00FFu); break;  // 8in16
+        case 2: w = (w << 16) | (w >> 16); break;                                 // 16in32
+        default: w = __builtin_bswap32(w); break;                                 // 8in32
+      }
+      std::memcpy(out + i, &w, 4);
+    }
+  }
+  for (; i < n; ++i) {
+    out[i] = mem[((addr + i) ^ xor_mask) & 0x1FFFFFFF];
+  }
+}
+
 void DecodeGuestTexture(const uint8_t* mem, const GuestTexture& t, const TextureFormatInfo& info,
                         const std::vector<HostTextureRegion>& regions, uint8_t* dst) {
   const uint32_t bw = info.block_width, bh = info.block_height, bpb = info.bytes_per_block;
@@ -546,6 +572,40 @@ void DecodeGuestTexture(const uint8_t* mem, const GuestTexture& t, const Texture
     const uint32_t host_rows = host_is_blocks
                                    ? AlignUp(r.height, info.host_block_height) / info.host_block_height
                                    : r.height;
+    // Fast path: no conversion, 2D. The guest bytes of a row of blocks come in runs that are
+    // contiguous in memory (whole rows when linear, pieces of up to 16 bytes when tiled): each run
+    // is copied at once instead of byte by byte. Video frames (8-bit planes uploaded every frame)
+    // spent 25-27 ms per frame in the generic loop below on the console.
+    if (info.conversion == TextureConversion::kNone && (host_is_blocks || (bw == 1 && bh == 1)) &&
+        !is_3d && is_pow2_bpb) {
+      for (uint32_t by = 0; by < hb; ++by) {
+        uint8_t* o = out + uint64_t(by) * host_row_bytes;
+        const uint32_t gy = by + loc.y_blocks;
+        auto offset = [&](uint32_t bx) {
+          const uint32_t gx = bx + loc.x_blocks;
+          if (t.tiled) {
+            return uint32_t(TiledOffset2D(int32_t(gx), int32_t(gy), loc.row_pitch_blocks, bpb_log2)) +
+                   r.layer * loc.slice_stride;
+          }
+          return r.layer * loc.slice_stride + gy * loc.row_pitch_bytes + gx * bpb;
+        };
+        if (!t.tiled) {
+          CopySwapped(mem, loc.storage_base + offset(0), wb * bpb, xor_mask, o);
+          continue;
+        }
+        // Tiled: x & 7 is the low part of the offset, so groups of 8 aligned texels are contiguous
+        // up to 16 bytes (8 texels at 1-2 bytes, 4 at 4, 2 at 8, 1 at 16).
+        const uint32_t group = bpb <= 2 ? 8 : 16 / bpb;
+        uint32_t bx = 0;
+        while (bx < wb) {
+          const uint32_t gx = bx + loc.x_blocks;
+          const uint32_t n = std::min(group - gx % group, wb - bx);
+          CopySwapped(mem, loc.storage_base + offset(bx), n * bpb, xor_mask, o + uint64_t(bx) * bpb);
+          bx += n;
+        }
+      }
+      continue;
+    }
     for (uint32_t z = 0; z < r.depth; ++z) {
       uint8_t* out_slice = out + uint64_t(host_row_bytes) * host_rows * z;
       for (uint32_t by = 0; by < hb; ++by) {
