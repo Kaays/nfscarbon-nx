@@ -140,3 +140,15 @@ game). nfsmw-nx measured 41 % of the preparer in those yields. Next build: nfsmw
 (`app/src/frame_handoff_hook.cpp`): sleep until the flag changes, executor sleeps instead of spinning on an empty
 list, both threads at priority 0x3A. `tools/codegen.sh` now starts from an empty folder, so newly hooked functions
 are not left called directly.
+
+## Session 8 (2026-10-16), frame handoff hooks
+
+The handoff works (`[handoff]` lines: the preparer sleeps 1-6.6 s per 10 s instead of yielding, both threads at
+0x3A). FPS about the same: Race Wars 13-18, Canyon 16-19.7. Canyon sound mostly fixed (odd on hard crashes);
+Race Wars still slow-motion and choppy.
+
+`rex_perfil.log` audio line, "solicitudes sin datos" (the host output asked for a block the game had not mixed):
+Race Wars 13-339 per 10 s, Canyon and menu 0. The previous build had the same in Race Wars (35-434). The mixer
+thread "RWAudioCore Dac" (40-67 % CPU) runs at 0x3B with the CPU at 270-290 %, and the handoff threads at 0x3A now
+preempt it. Next build: the mixer at 0x39 (`app/src/audio_thread_hook.cpp`, thread entry sub_826C6CD0, created by
+sub_826C6358 with the name at 0x820510B8).

@@ -31,6 +31,8 @@ set(NFSCARBON_SOURCES
     src/nfscarbon_switch.cpp
     # The game's two render threads sleep until the frame flag changes (no Sleep(0) loops).
     src/frame_handoff_hook.cpp
+    # The game's audio mixer thread above the other game threads.
+    src/audio_thread_hook.cpp
 )
 
 # Native Vulkan renderer (renderer/): an OBJECT library linked into the NRO on
