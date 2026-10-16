@@ -285,6 +285,31 @@ static sem_t* RexCreateAnonymousSemaphore() {
 }
 #endif  // __APPLE__
 
+// Wakes WaitMultiple callers when any object is signaled. WaitMultiple used to poll its handles
+// with 1 ms sleeps (on Horizon a sleep often lasts longer), adding up to a millisecond or more to
+// every wait on several objects. The game's audio path waits that way once or twice per 5.33 ms
+// block (nfscarbon-nx: the Audio Worker and the game's XAudio callback, 76 % of their samples in
+// that sleep), and a late block is a gap in the sound. Every signal bumps an epoch; a waiter
+// sleeps on one shared condition variable until the epoch moves, still at most 1 ms per check.
+struct MultiWaitHub {
+  std::mutex mutex;
+  std::condition_variable cv;
+  std::atomic<uint64_t> epoch{0};
+  std::atomic<int> waiters{0};
+};
+inline MultiWaitHub& GetMultiWaitHub() {
+  static MultiWaitHub hub;
+  return hub;
+}
+inline void NotifyMultiWaiters() {
+  MultiWaitHub& hub = GetMultiWaitHub();
+  hub.epoch.fetch_add(1);
+  if (hub.waiters.load() > 0) {
+    std::lock_guard<std::mutex> lock(hub.mutex);
+    hub.cv.notify_all();
+  }
+}
+
 class PosixConditionBase {
  public:
   PosixConditionBase() {
@@ -381,7 +406,10 @@ class PosixConditionBase {
     // Reuse the allocation between polls; clear() releases the locks, not the memory.
     std::vector<std::unique_lock<std::mutex>> locks;
     locks.reserve(handles.size());
+    MultiWaitHub& hub = GetMultiWaitHub();
     while (true) {
+      // Read before inspecting the handles: a signal after this point moves the epoch.
+      const uint64_t seen_epoch = hub.epoch.load();
       size_t first_signaled = std::numeric_limits<size_t>::max();
       bool condition_met = false;
       bool all_locked = true;
@@ -472,16 +500,19 @@ class PosixConditionBase {
         return std::make_pair<WaitResult, size_t>(WaitResult::kTimeout, 0);
       }
 
-      if (timeout == std::chrono::milliseconds::max()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-      } else {
-        // In microseconds. In milliseconds, the remainder of a short wait was
-        // truncated to 0 and sleep_for(0) does not sleep: the alertable wait asks
-        // for 1 ms slices, so WaitAny spun for its whole timeout. On Switch the
-        // audio thread (0x2B) ate a whole core this way.
-        auto remaining = std::chrono::duration_cast<std::chrono::microseconds>(end_time - now);
-        auto sleep_time = std::min(remaining, std::chrono::microseconds(1000));
-        std::this_thread::sleep_for(sleep_time);
+      // In microseconds. In milliseconds, the remainder of a short wait was
+      // truncated to 0 and a zero sleep does not sleep: the alertable wait asks
+      // for 1 ms slices, so WaitAny spun for its whole timeout. On Switch the
+      // audio thread (0x2B) ate a whole core this way.
+      auto slice = std::chrono::microseconds(1000);
+      if (timeout != std::chrono::milliseconds::max()) {
+        slice = std::min(std::chrono::duration_cast<std::chrono::microseconds>(end_time - now), slice);
+      }
+      if (slice.count() > 0) {
+        std::unique_lock<std::mutex> hub_lock(hub.mutex);
+        hub.waiters.fetch_add(1);
+        hub.cv.wait_for(hub_lock, slice, [&hub, seen_epoch] { return hub.epoch.load() != seen_epoch; });
+        hub.waiters.fetch_sub(1);
       }
     }
   }
@@ -515,6 +546,7 @@ class PosixCondition<Event> : public PosixConditionBase {
     auto lock = std::unique_lock<std::mutex>(mutex_);
     signal_ = true;
     cond_.notify_all();
+    NotifyMultiWaiters();
     return true;
   }
 
@@ -552,6 +584,7 @@ class PosixCondition<Semaphore> : public PosixConditionBase {
     }
     count_ += release_count;
     cond_.notify_all();
+    NotifyMultiWaiters();
     return true;
   }
 
@@ -584,6 +617,7 @@ class PosixCondition<Mutant> : public PosixConditionBase {
       // Free to be acquired by another thread
       if (count_ == 0) {
         cond_.notify_all();
+        NotifyMultiWaiters();
       }
       return true;
     }
@@ -616,6 +650,7 @@ class PosixCondition<Timer> : public PosixConditionBase {
     std::lock_guard<std::mutex> lock(mutex_);
     signal_ = true;
     cond_.notify_all();
+    NotifyMultiWaiters();
     return true;
   }
 
@@ -1081,6 +1116,7 @@ class PosixCondition<Thread> : public PosixConditionBase {
       exit_code_ = exit_code;
       signaled_ = true;
       cond_.notify_all();
+      NotifyMultiWaiters();
     }
     if (is_current_thread) {
       pthread_exit(reinterpret_cast<void*>(exit_code));
@@ -1554,6 +1590,7 @@ void* PosixCondition<Thread>::ThreadStartRoutine(void* parameter) {
     thread->handle_.exit_code_ = 0;
     thread->handle_.signaled_ = true;
     thread->handle_.cond_.notify_all();
+    NotifyMultiWaiters();
   }
 
   current_thread_ = nullptr;

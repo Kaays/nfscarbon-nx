@@ -184,3 +184,17 @@ Next build: shaders that read float constants only with static indices get them 
 (~4 KiB per stage, 25-60 MiB per frame in Race Wars). Shaders with relative addressing keep the whole 256. New log
 line: `float constants per frame: N packed uploads, M full, X MiB saved`. The translated GLSL changes, so every
 shader is compiled again once (stutter in the first scenes after updating).
+
+## Session 12 (2026-10-16), packed constants on the console; WaitMultiple wakeups
+
+Packed float constants work: nearly every upload is packed (6959-8859 packed vs 0-2 full per frame in Race Wars),
+constants per frame 25 MiB → 9-18 MiB, the constants phase 7-8 ms → 3-5 ms at stock clocks. No image problems
+reported. Frame rate at stock about the same (Race Wars 12.7-13.5 in that run): the CPU stays saturated.
+
+At CPU 1785 / GPU 921 / RAM 2133 the sound still misses 0-36 blocks per 10 s in Race Wars (stack sampling was on,
+which costs CPU). Stack samples: the Audio Worker spends 76 % of its samples inside the game's XAudio callback
+(sub_82A4FED0) in KeWaitForMultipleObjects, and the rest in its own WaitAny: both sleeping in the SDK's
+`PosixConditionBase::WaitMultiple`, which polled its handles with 1 ms sleeps. Next build: a shared wakeup (an epoch
+bumped by every signal and a condition variable) so multi-object waits return as soon as an object is signaled,
+still rechecking at least every 1 ms. On the PC: wake latency 494-530 µs → 54-67 µs on average, results and
+timeouts unchanged.
