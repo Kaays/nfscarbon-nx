@@ -86,8 +86,8 @@ if(REXGLUE_PLATFORM_SWITCH)
         target_compile_options(nfscarbon_recomp PRIVATE -O2)
     endif()
 
-    # Homebrew Menu icon: a 256x256 JPEG. Not distributed; without it the NRO
-    # gets libnx's default icon.
+    # Homebrew Menu icon: a 256x256 JPEG (original artwork, no game assets).
+    # Without it the NRO gets libnx's default icon.
     set(NFSCARBON_ICON "${CMAKE_CURRENT_SOURCE_DIR}/../tools/switch/icon/nfscarbon_icon.jpg")
     set(NFSCARBON_ICON_ARG)
     if(EXISTS "${NFSCARBON_ICON}")
