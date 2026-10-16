@@ -202,21 +202,3 @@ homebrew requires custom firmware, which violates Nintendo's terms of service an
 
 Source code under GPL-3.0 (see [LICENSE](LICENSE)), inherited from nfsmw-nx and NFSMW Recompiled. The SDK keeps its
 BSD-3-Clause license and the Mesa patch MIT ([THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
-
----
-
-## Türkçe
-
-Need for Speed: Carbon'un (Xbox 360) Nintendo Switch'e **resmi olmayan, yapım aşamasındaki** native portu. Emülatör
-değil: oyunun kodu ReXGlue ile C++'a çevriliyor ve Switch için derleniyor. Oyun açılıyor, menüler ve yarışlar
-oynanabiliyor. Stok hızlarda 13-25 FPS veriyor ve kalabalık yarışlarda ses bozuluyor. Overclock ile 30 FPS'te
-sabit kalıyor.
-
-Bu proje, bu alanlarda (recompilation, GPU sürücüleri, konsol geliştirme) bilgisi olmayan biri tarafından
-**Claude** (Anthropic'in yapay zekâ asistanı) ile adım adım hazırlandı. Kodu ve derleme betiklerini Claude yazdı.
-Konsoldaki testler, loglar ve kararlar bana aitti. Bu bir başlangıç noktası: amaç, başkalarının devralıp ileri
-götürebilmesi. Yapılacak işler parçalara ayrılmış olarak [docs/roadmap.md](docs/roadmap.md) dosyasında.
-
-Oyunun hiçbir dosyası ya da oyundan üretilmiş kod bu depoda yok. Derlemek isteyen kendi kopyasını çıkarıp kendi
-bilgisayarında derlemeli. Başlıca referans projeler: [nfs-carbon-recomp](https://github.com/Sampreeth004/nfs-carbon-recomp)
-(Sampreeth004) ve [nfsmw-nx](https://github.com/StevensND/nfsmw-nx) (StevensND).
