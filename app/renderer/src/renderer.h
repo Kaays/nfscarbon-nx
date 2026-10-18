@@ -366,6 +366,12 @@ class Renderer {
   bool arena_reset_pending_ = false;
   std::unordered_map<uint64_t, uint8_t> arena_changes_;  // >= 3: treated as dynamic
 
+  // nfsmw-nx's NVK draw-path improvements (carbon_gpu_nvk_improvements), refreshed once per submission.
+  void UpdateNvkImprovements();
+  bool nvk_prefetch_ = false;
+  bool nvk_improvements_logged_ = false;
+  uint32_t nvk_off_reported_ = 0;
+
   // Frees textures and render targets that have not been used for a while.
   void EvictResources();
   uint64_t texture_bytes_ = 0;

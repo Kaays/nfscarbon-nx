@@ -94,6 +94,11 @@ REXCVAR_DEFINE_BOOL(carbon_gpu_draw_profile, true, "CarbonGPU",
 REXCVAR_DEFINE_BOOL(carbon_gpu_dump_shaders, false, "CarbonGPU",
                     "Write the generated GLSL of every translated shader to <cache>/carbon_gpu/glsl");
 
+REXCVAR_DEFINE_BOOL(carbon_gpu_nvk_improvements, true, "CarbonGPU",
+                    "Switch: ask NVK for nfsmw-nx's draw-path improvements (cheaper state emission, fewer "
+                    "constant buffer rebinds, dynamic state shortcuts, pipeline prefetch, dynamic offsets by "
+                    "differences). Each checks itself in the driver. false = NVK as before");
+
 #if defined(__ANDROID__)
 // librexruntime.so: the app's fps overlay reads these through the JNI bridge.
 extern "C" void rex_gpu_report_fps(float fps, float frame_ms, float worst_ms);
@@ -101,6 +106,52 @@ extern "C" void rex_gpu_report_fps(float fps, float frame_ms, float worst_ms);
 #if defined(__SWITCH__)
 // sdk/src/ui/switch_perf.cpp: counter 0 is the game's frames.
 extern "C" void RexSwitchPerfCount(unsigned id);
+
+// NVK draw-path improvements from nfsmw-nx's Mesa patch (mesa/mesa-switch-nfsmw.patch, "build 184/186",
+// nfsmw-nx docs/mesa.md "The draw path"). They are in the driver this port links, but off until the app
+// asks for them, and nfscarbon-nx never did. Each one checks itself inside NVK and switches itself off on
+// a mismatch. The structures are a versioned contract (same field order and types as in NVK); weak
+// symbols, so a Mesa without the patch leaves them null.
+extern "C" {
+struct NvkSwitchSet4Counts {
+  uint64_t values[9];
+};
+struct NvkSwitchSet4 {
+  int32_t version;
+  int32_t requested;
+  int32_t environment;
+  int32_t switched_off;
+  NvkSwitchSet4Counts total;
+};
+struct NvkSwPart {
+  uint64_t calls;
+  uint64_t ticks;
+};
+struct NvkSwImprovement {
+  int32_t requested;
+  int32_t switched_off;
+  uint64_t uses;
+  uint64_t validated;
+  uint64_t differences;
+  uint64_t unchecked;
+};
+struct NvkSwitchDraw {
+  int32_t version;
+  int32_t measure;
+  int32_t measure_misses;
+  int32_t environment;
+  uint64_t ticks_per_second;
+  NvkSwPart parts[16];
+  uint64_t counts[13];
+  NvkSwImprovement improvements[5];  // emission, cbufs, dynamic state, (fast set 4, not used), prefetch
+};
+extern NvkSwitchSet4 nvk_switch_set4 __attribute__((weak));
+extern NvkSwitchDraw nvk_switch_dibujo __attribute__((weak));
+void vk_switch_precargar_pipeline(VkPipeline pipeline) __attribute__((weak));
+}
+static_assert(sizeof(NvkSwitchSet4) == 16 + 9 * 8, "must match struct nvk_switch_set4 in NVK");
+static_assert(sizeof(NvkSwitchDraw) == 24 + 16 * 16 + 13 * 8 + 5 * 40,
+              "must match struct nvk_switch_dibujo in NVK");
 #endif
 
 namespace carbon::gpu {
@@ -703,10 +754,52 @@ bool Renderer::BeginFrame() {
   return true;
 }
 
+void Renderer::UpdateNvkImprovements() {
+#if defined(__SWITCH__)
+  const bool want = REXCVAR_GET(carbon_gpu_nvk_improvements);
+  NvkSwitchDraw* const draw = &nvk_switch_dibujo;
+  NvkSwitchSet4* const set4 = &nvk_switch_set4;
+  const bool have_draw = draw != nullptr && draw->version == 1;
+  const bool have_set4 = set4 != nullptr && set4->version == 1;
+  if (!nvk_improvements_logged_) {
+    nvk_improvements_logged_ = true;
+    REXGPU_INFO("[carbon-gpu] NVK draw-path improvements: {} (draw contract {}, set by differences {})",
+                want ? "requested" : "off", have_draw ? "present" : "MISSING",
+                have_set4 ? "present" : "MISSING");
+  }
+  if (have_draw) {
+    static constexpr int kUsed[4] = {0, 1, 2, 4};
+    for (int m : kUsed) {
+      __atomic_store_n(&draw->improvements[m].requested, want ? 1 : 0, __ATOMIC_RELAXED);
+    }
+    static constexpr const char* kNames[5] = {"emission", "cbufs", "dynamic state", "fast set 4", "prefetch"};
+    for (int m : kUsed) {
+      if (!(nvk_off_reported_ & (1u << m)) &&
+          __atomic_load_n(&draw->improvements[m].switched_off, __ATOMIC_RELAXED) != 0) {
+        nvk_off_reported_ |= 1u << m;
+        REXGPU_ERROR("[carbon-gpu] NVK improvement '{}' switched itself off: its check saw a difference "
+                     "(details in rex_stderr.log); NVK does it as before",
+                     kNames[m]);
+      }
+    }
+  }
+  nvk_prefetch_ = want && have_draw && vk_switch_precargar_pipeline != nullptr;
+  if (have_set4) {
+    __atomic_store_n(&set4->requested, want ? 1 : 0, __ATOMIC_RELAXED);
+    if (!(nvk_off_reported_ & 0x100u) && __atomic_load_n(&set4->switched_off, __ATOMIC_RELAXED) != 0) {
+      nvk_off_reported_ |= 0x100u;
+      REXGPU_ERROR("[carbon-gpu] NVK dynamic offsets by differences switched itself off: its check saw a "
+                   "difference (details in rex_stderr.log)");
+    }
+  }
+#endif
+}
+
 void Renderer::EndFrame(bool present, const std::function<void(VkCommandBuffer)>& present_fn) {
   if (!frame_open_) {
     BeginFrame();
   }
+  UpdateNvkImprovements();
   EndRendering();
   const auto& dfn = vulkan_device_->functions();
   Frame& f = frame();
@@ -2519,6 +2612,11 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
   const auto& dfn = vulkan_device_->functions();
   VkCommandBuffer cb = frame().cb;
   if (cmd_.pipeline != pipeline) {
+#if defined(__SWITCH__)
+    if (nvk_prefetch_ && vk_switch_precargar_pipeline) {
+      vk_switch_precargar_pipeline(pipeline);
+    }
+#endif
     dfn.vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     cmd_.pipeline = pipeline;
   }
@@ -3003,11 +3101,15 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
   ++stats_frames_;
   double now = NowSeconds();
   if (overlay_last_swap_ > 0.0 && (now - overlay_last_swap_) * 1000.0 > 25.0 &&
-      REXCVAR_GET(carbon_gpu_stats) && spike_reports_ < 6) {
+      REXCVAR_GET(carbon_gpu_stats) &&
+      (spike_reports_ < 6 || (now - overlay_last_swap_) * 1000.0 > 100.0)) {
+    // Up to 6 slow frames per stats window, and every hitch over 100 ms (the freeze when the player
+    // takes control was never in the first 6).
     ++spike_reports_;
     REXGPU_INFO(
-        "[carbon-gpu] slow frame {:.1f} ms: draws {:.1f} ms, texture uploads {} ({:.1f} ms), "
+        "[carbon-gpu] {} {:.1f} ms: draws {:.1f} ms, texture uploads {} ({:.1f} ms), "
         "pipelines built inline {}, cp idle {:.1f} ms, cp WAIT_REG_MEM {:.1f} ms",
+        (now - overlay_last_swap_) * 1000.0 > 100.0 ? "HITCH" : "slow frame",
         (now - overlay_last_swap_) * 1000.0, frame_draw_s_ * 1000.0, frame_textures_,
         frame_texture_s_ * 1000.0, frame_pipeline_builds_, frame_idle_s_ * 1000.0,
         frame_wait_s_ * 1000.0);
