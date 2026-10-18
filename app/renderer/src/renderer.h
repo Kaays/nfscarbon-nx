@@ -353,7 +353,18 @@ class Renderer {
   std::vector<uint8_t> arena_slot_state_;   // 0 empty, 1 erased, 2 live
   size_t arena_slots_used_ = 0;             // live + erased
   size_t arena_live_ = 0;
-  static size_t ArenaSlotHash(uint64_t key) { return size_t((key * 0x9E3779B97F4A7C15ull) >> 20); }
+  // Full 64-bit mix (murmur3 finalizer). The key is address << 32 | size, and a plain multiply kept
+  // only the size in the low bits: every buffer of the same size fell into one probe cluster, so the
+  // vertex phase grew from 1.2 to 5 us per draw as the arena filled, and growing the table took 355 ms
+  // (console, session 15). Measured with synthetic keys: 625 probes per insert before, 0.4 after.
+  static size_t ArenaSlotHash(uint64_t key) {
+    key ^= key >> 33;
+    key *= 0xFF51AFD7ED558CCDull;
+    key ^= key >> 33;
+    key *= 0xC4CEB9FE1A85EC53ull;
+    key ^= key >> 33;
+    return size_t(key);
+  }
   uint32_t ArenaLookup(uint64_t key) const;  // UINT32_MAX if absent
   void ArenaInsert(uint64_t key, uint32_t entry);
   void ArenaErase(uint64_t key);
