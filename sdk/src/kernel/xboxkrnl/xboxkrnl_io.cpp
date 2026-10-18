@@ -37,7 +37,6 @@
 #include <rex/thread/mutex.h>
 
 #include <cctype>
-#include <thread>
 #include <deque>
 #include <condition_variable>
 #include <mutex>
@@ -623,6 +622,7 @@ std::condition_variable g_async_cv;
 std::deque<LecturaAsincrona> g_async_cola;
 std::atomic<uint64_t> g_async_total{0};
 bool g_async_hilo = false;
+bool g_async_roto = false;  // the I/O thread could not be created: every read in the call
 
 void HiloLecturasAsincronas() {
   for (;;) {
@@ -651,11 +651,24 @@ void HiloLecturasAsincronas() {
   }
 }
 
-void EncolarLecturaAsincrona(LecturaAsincrona l) {
+bool EncolarLecturaAsincrona(LecturaAsincrona& l) {
   std::lock_guard<std::mutex> lock(g_async_mutex);
+  if (g_async_roto) {
+    return false;
+  }
   if (!g_async_hilo) {
     g_async_hilo = true;
-    std::thread(HiloLecturasAsincronas).detach();
+    // A rex thread, not std::thread: on the Switch std::thread threw and the game aborted at boot.
+    rex::thread::Thread::CreationParameters params;
+    params.stack_size = 256 * 1024;
+    static std::unique_ptr<rex::thread::Thread> hilo;
+    hilo = rex::thread::Thread::Create(params, [] { HiloLecturasAsincronas(); });
+    if (!hilo) {
+      g_async_roto = true;
+      REXKRNL_ERROR("[io] nfscarbon_io_async: could not create the I/O thread; reading in the call");
+      return false;
+    }
+    hilo->set_name("Carbon async I/O");
     REXKRNL_INFO("[io] nfscarbon_io_async: overlapped reads complete on their own thread (first from "
                  "'{}', {} bytes of '{}')",
                  l.origen, l.length, l.file->path());
@@ -663,6 +676,7 @@ void EncolarLecturaAsincrona(LecturaAsincrona l) {
   g_async_total.fetch_add(1, std::memory_order_relaxed);
   g_async_cola.push_back(std::move(l));
   g_async_cv.notify_one();
+  return true;
 }
 }  // namespace
 
@@ -740,8 +754,9 @@ u32 NtReadFile_entry(u32 file_handle, u32 event_handle, mapped_void apc_routine_
       l.apc_context = apc_context.guest_address();
       l.offset = static_cast<uint64_t>(*byte_offset_ptr);
       l.origen = NombreHiloActual();
-      EncolarLecturaAsincrona(std::move(l));
-      return X_STATUS_PENDING;
+      if (EncolarLecturaAsincrona(l)) {
+        return X_STATUS_PENDING;
+      }
     }
     if (true || file->is_synchronous()) {
       // Synchronous.
