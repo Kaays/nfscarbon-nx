@@ -109,6 +109,23 @@ X_STATUS XFile::Read(uint32_t buffer_guest_address, uint32_t buffer_length, uint
                       notify_completion);
 }
 
+X_STATUS XFile::ReadThen(uint32_t buffer_guest_address, uint32_t buffer_length,
+                         uint64_t byte_offset, uint32_t apc_context,
+                         const std::function<void(X_STATUS, uint32_t)>& done) {
+  std::lock_guard<std::mutex> lock(file_lock_);
+  uint32_t bytes_read = 0;
+  const X_STATUS result = ReadInternal(buffer_guest_address, buffer_length, byte_offset,
+                                       &bytes_read, apc_context, false);
+  done(result, bytes_read);
+  XIOCompletion::IONotification notify;
+  notify.apc_context = apc_context;
+  notify.num_bytes = bytes_read;
+  notify.status = result;
+  NotifyIOCompletionPorts(notify);
+  async_event_->Set();
+  return result;
+}
+
 X_STATUS XFile::ReadInternal(uint32_t buffer_guest_address, uint32_t buffer_length,
                              uint64_t byte_offset, uint32_t* out_bytes_read, uint32_t apc_context,
                              bool notify_completion) {

@@ -33,9 +33,13 @@
 #include <rex/system/xsymboliclink.h>
 #include <rex/system/xthread.h>
 #include <rex/system/xtypes.h>
+#include <rex/thread.h>
 #include <rex/thread/mutex.h>
 
 #include <cctype>
+#include <thread>
+#include <deque>
+#include <condition_variable>
 #include <mutex>
 #include <string>
 #include <utility>
@@ -51,8 +55,21 @@
  *
  * A monotonic clock read per call is a few nanoseconds next to a trip to the SD. It is on.
  */
-REXCVAR_DEFINE_INT32(nfsmw_io_aviso_ms, 8, "Filesystem",
+REXCVAR_DEFINE_INT32(nfsmw_io_aviso_ms, 30, "Filesystem",
                      "Avisa en el log de cada apertura o lectura que pase de estos ms (0 = nunca).");
+/*
+ * nfscarbon-nx: asynchronous reads where the game asks for them.
+ *
+ * The game has a real overlapped read (call site 0x8284DAF4: an event, and the status block preset to
+ * PENDING). Every read here has always completed inside NtReadFile, so the thread that asked waits for
+ * the SD. On the console the race start stalls the game for 170-190 ms with the CPU almost idle while it
+ * reads 64 MB (worst read 152 ms). With this on, a read that is overlapped (file opened without
+ * FILE_SYNCHRONOUS_IO, an event, an explicit offset, no APC) returns PENDING at once and a host thread
+ * does the read, writes the status block and signals the event, as the Xbox 360 does.
+ */
+REXCVAR_DEFINE_BOOL(nfscarbon_io_async, false, "Filesystem",
+                    "Overlapped NtReadFile calls (event, no APC) complete on an I/O thread instead of "
+                    "inside the call. false = every read completes inside NtReadFile, as before");
 REXCVAR_DEFINE_INT32(nfsmw_io_resumen_s, 15, "Filesystem",
                      "Cada cuantos segundos se escribe el resumen [io] (0 = nunca).");
 
@@ -348,8 +365,14 @@ inline void AnotarApertura(uint64_t us, bool ok, const std::string_view ruta) {
   }
 }
 
+// Name of the thread doing the I/O, for the slow-read lines.
+std::string NombreHiloActual() {
+  auto* hilo = rex::thread::Thread::GetCurrentThread();
+  return hilo ? hilo->name() : std::string("?");
+}
+
 inline void AnotarLectura(uint64_t us, uint32_t bytes, const std::string_view ruta,
-                          uint64_t desplazamiento) {
+                          uint64_t desplazamiento, const char* modo = "") {
   g_io.lecturas.fetch_add(1, std::memory_order_relaxed);
   g_io.bytes_leidos.fetch_add(bytes, std::memory_order_relaxed);
   g_io.us_lecturas.fetch_add(us, std::memory_order_relaxed);
@@ -361,8 +384,8 @@ inline void AnotarLectura(uint64_t us, uint32_t bytes, const std::string_view ru
   if (aviso_ms > 0 && us >= static_cast<uint64_t>(aviso_ms) * 1000ull &&
       g_io_avisos.fetch_add(1, std::memory_order_relaxed) < 300) {
     // The offset is included. Without it a sequential sweep cannot be told apart from a reread.
-    REXKRNL_WARN("[io] LENTO: leer {} bytes de '{}' en {} tardo {:.1f} ms{}", bytes, ruta,
-                 desplazamiento, us / 1000.0, releida ? " (RELEIDA)" : "");
+    REXKRNL_WARN("[io] LENTO: leer {} bytes de '{}' en {} tardo {:.1f} ms{} [hilo {}{}]", bytes, ruta,
+                 desplazamiento, us / 1000.0, releida ? " (RELEIDA)" : "", NombreHiloActual(), modo);
   }
 }
 
@@ -585,6 +608,64 @@ u32 NtOpenFile_entry(mapped_u32 handle_out, u32 desired_access,
                             open_options);
 }
 
+namespace {
+// One thread completes the asynchronous reads in order (nfscarbon_io_async).
+struct LecturaAsincrona {
+  object_ref<XFile> file;
+  object_ref<XEvent> ev;
+  X_IO_STATUS_BLOCK* iosb;
+  uint32_t buffer, length, apc_context;
+  uint64_t offset;
+  std::string origen;
+};
+std::mutex g_async_mutex;
+std::condition_variable g_async_cv;
+std::deque<LecturaAsincrona> g_async_cola;
+std::atomic<uint64_t> g_async_total{0};
+bool g_async_hilo = false;
+
+void HiloLecturasAsincronas() {
+  for (;;) {
+    LecturaAsincrona l;
+    {
+      std::unique_lock<std::mutex> lock(g_async_mutex);
+      g_async_cv.wait(lock, [] { return !g_async_cola.empty(); });
+      l = std::move(g_async_cola.front());
+      g_async_cola.pop_front();
+    }
+    const uint64_t inicio = AhoraUs();
+    l.file->ReadThen(l.buffer, l.length, l.offset, l.apc_context,
+                     [&](X_STATUS status, uint32_t bytes) {
+                       if (l.iosb) {
+                         l.iosb->information = bytes;
+                         l.iosb->status = status;
+                       }
+                       const uint64_t fin = AhoraUs();
+                       const std::string modo = " async, pedida por " + l.origen;
+                       AnotarLectura(fin - inicio, bytes, l.file->path(), l.offset, modo.c_str());
+                       QuizaResumenIo(fin);
+                     });
+    if (l.ev) {
+      l.ev->Set(0, false);
+    }
+  }
+}
+
+void EncolarLecturaAsincrona(LecturaAsincrona l) {
+  std::lock_guard<std::mutex> lock(g_async_mutex);
+  if (!g_async_hilo) {
+    g_async_hilo = true;
+    std::thread(HiloLecturasAsincronas).detach();
+    REXKRNL_INFO("[io] nfscarbon_io_async: overlapped reads complete on their own thread (first from "
+                 "'{}', {} bytes of '{}')",
+                 l.origen, l.length, l.file->path());
+  }
+  g_async_total.fetch_add(1, std::memory_order_relaxed);
+  g_async_cola.push_back(std::move(l));
+  g_async_cv.notify_one();
+}
+}  // namespace
+
 u32 NtReadFile_entry(u32 file_handle, u32 event_handle, mapped_void apc_routine_ptr,
                      mapped_void apc_context, ppc_ptr_t<X_IO_STATUS_BLOCK> io_status_block,
                      mapped_void buffer, u32 buffer_length, mapped_u64 byte_offset_ptr) {
@@ -641,6 +722,27 @@ u32 NtReadFile_entry(u32 file_handle, u32 event_handle, mapped_void apc_routine_
      * 0.25 s of a slow read, against a base rate of 5 %). The only place it could gain is inside
      * loading, if the game overlaps; that is 29.7 s out of 483. Not worth the risk.
      */
+    if (REXCVAR_GET(nfscarbon_io_async) && !file->is_synchronous() && ev && byte_offset_ptr &&
+        !apc_requested && buffer_length) {
+      // Overlapped: PENDING now, the I/O thread finishes it (see nfscarbon_io_async).
+      ev->Reset();
+      file->ResetAsyncEvent();
+      if (io_status_block) {
+        io_status_block->status = X_STATUS_PENDING;
+        io_status_block->information = 0;
+      }
+      LecturaAsincrona l;
+      l.file = file;
+      l.ev = ev;
+      l.iosb = io_status_block ? io_status_block.host_address() : nullptr;
+      l.buffer = buffer.guest_address();
+      l.length = buffer_length;
+      l.apc_context = apc_context.guest_address();
+      l.offset = static_cast<uint64_t>(*byte_offset_ptr);
+      l.origen = NombreHiloActual();
+      EncolarLecturaAsincrona(std::move(l));
+      return X_STATUS_PENDING;
+    }
     if (true || file->is_synchronous()) {
       // Synchronous.
       uint32_t bytes_read = 0;

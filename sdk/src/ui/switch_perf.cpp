@@ -416,8 +416,10 @@ void Report(u64 elapsed_ticks, u64 tick_freq, u64 counters_last[kCounterCount],
   std::fprintf(f,
                "     audio: %.0f bloques de cliente mezclados, %.0f solicitudes sin datos, "
                "%.0f/%.0f buffers audout con PCM no nulo, %.0f muestras saturadas (mas de 1,0 antes de recortar), "
-               "%.0f buffers con pico de 0,98 o mas, pico maximo %.3f | consola en modo %s\n",
+               "%.0f buffers con pico de 0,98 o mas, pico maximo %.3f, %.0f huecos (bloque en silencio tras sonido) "
+               "| consola en modo %s\n",
                delta(24), delta(25), delta(26), delta(27), delta(21), delta(22), double(pico_audio) / 10000.0,
+               delta(28),
                rex::ui::switch_saltynx::ModoBase(appletGetOperationMode() == AppletOperationMode_Console)
                    ? "sobremesa"
                    : "portatil");

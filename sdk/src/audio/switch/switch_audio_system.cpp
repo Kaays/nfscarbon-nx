@@ -331,6 +331,33 @@ void SwitchAudioSystem::FillAndAppend(size_t buffer_index) {
       pcm_nonzero |= samples[i] != 0;
     }
   }
+  // Gaps (nfscarbon-nx): a game frame (256 samples, 5.3 ms) that is silent right after one with sound.
+  // A phone recording of a Race Wars race has 10-20 ms holes in the sound while every block arrives
+  // on time; this tells holes in the game's own mix (a voice without data) from a late block. Counting
+  // and the first lines with their time, to put them next to the renderer's slow frames.
+  {
+    static float pico_anterior = 0.0f;
+    static uint32_t huecos_avisados = 0;
+    uint32_t huecos = 0;
+    const size_t por_frame = SwitchAudioDriver::kChannelSamples * 2;
+    for (size_t f = 0; f + por_frame <= output.mix.size(); f += por_frame) {
+      float pico_frame = 0.0f;
+      for (size_t i = f; i < f + por_frame; ++i) {
+        pico_frame = std::max(pico_frame, std::fabs(output.mix[i]));
+      }
+      if (pico_anterior > 0.02f && pico_frame < 0.0005f) {
+        ++huecos;
+        if (huecos_avisados < 60) {
+          ++huecos_avisados;
+          REXLOG_WARN("[audio] hueco: un bloque del juego en silencio tras uno con pico {:.3f} "
+                      "(bloques sin datos en este buffer: {})",
+                      pico_anterior, frames_missing);
+        }
+      }
+      pico_anterior = pico_frame;
+    }
+    RexSwitchPerfAdd(28, huecos);
+  }
   RexSwitchPerfAdd(21, saturadas);
   RexSwitchPerfAdd(22, pico >= 0.98f ? 1 : 0);
   RexSwitchPerfMax(23, static_cast<u64>(std::min(pico, 100.0f) * 10000.0f));

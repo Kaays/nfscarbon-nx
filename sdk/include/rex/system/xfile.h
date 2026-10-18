@@ -12,6 +12,7 @@
 
 #include <string>
 #include <filesystem>
+#include <functional>
 #include <mutex>
 
 #include <rex/filesystem/device.h>
@@ -92,6 +93,14 @@ class XFile : public XObject {
   // critical region).
   X_STATUS Read(uint32_t buffer_guess_address, uint32_t buffer_length, uint64_t byte_offset,
                 uint32_t* out_bytes_read, uint32_t apc_context, bool notify_completion = true);
+
+  // For an asynchronous NtReadFile completed on another thread: reads, calls `done` with the
+  // result (where the caller writes the status block), and only then signals the file and its
+  // completion ports, so a guest waiting on either never sees the status block before it is
+  // written.
+  X_STATUS ReadThen(uint32_t buffer_guest_address, uint32_t buffer_length, uint64_t byte_offset,
+                    uint32_t apc_context, const std::function<void(X_STATUS, uint32_t)>& done);
+  void ResetAsyncEvent() { async_event_->Reset(); }
 
   X_STATUS ReadScatter(uint32_t segments_guest_address, uint32_t length, uint64_t byte_offset,
                        uint32_t* out_bytes_read, uint32_t apc_context);
