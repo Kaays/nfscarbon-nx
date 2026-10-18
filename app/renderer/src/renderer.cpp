@@ -655,8 +655,8 @@ bool Renderer::BeginFrame() {
       }
     }
     REXGPU_INFO("[carbon-gpu] vertex arena full ({} MiB, {} buffers): starting over",
-                arena_used_ >> 20, arena_entries_.size());
-    arena_entries_.clear();
+                arena_used_ >> 20, arena_live_);
+    ArenaClear();
     arena_used_ = 0;
     arena_reset_pending_ = false;
   }
@@ -1609,6 +1609,76 @@ bool Renderer::CreateVertexArena() {
   return true;
 }
 
+uint32_t Renderer::ArenaLookup(uint64_t key) const {
+  if (arena_slot_state_.empty()) {
+    return UINT32_MAX;
+  }
+  const size_t mask = arena_slot_state_.size() - 1;
+  for (size_t i = ArenaSlotHash(key) & mask;; i = (i + 1) & mask) {
+    const uint8_t state = arena_slot_state_[i];
+    if (state == 0) return UINT32_MAX;
+    if (state == 2 && arena_slot_key_[i] == key) return arena_slot_entry_[i];
+  }
+}
+
+void Renderer::ArenaInsert(uint64_t key, uint32_t entry) {
+  // Keep at most half the slots in use (erased ones count), growing or cleaning out erased slots.
+  if ((arena_slots_used_ + 1) * 2 > arena_slot_state_.size()) {
+    size_t capacity = std::max<size_t>(arena_slot_state_.size(), size_t(1) << 16);
+    while ((arena_live_ + 1) * 2 > capacity) capacity *= 2;
+    std::vector<uint64_t> old_keys(capacity, 0);
+    std::vector<uint32_t> old_entries(capacity, 0);
+    std::vector<uint8_t> old_states(capacity, 0);
+    old_keys.swap(arena_slot_key_);
+    old_entries.swap(arena_slot_entry_);
+    old_states.swap(arena_slot_state_);
+    arena_slots_used_ = 0;
+    const size_t mask = capacity - 1;
+    for (size_t j = 0; j < old_states.size(); ++j) {
+      if (old_states[j] != 2) continue;
+      size_t i = ArenaSlotHash(old_keys[j]) & mask;
+      while (arena_slot_state_[i]) i = (i + 1) & mask;
+      arena_slot_key_[i] = old_keys[j];
+      arena_slot_entry_[i] = old_entries[j];
+      arena_slot_state_[i] = 2;
+      ++arena_slots_used_;
+    }
+  }
+  const size_t mask = arena_slot_state_.size() - 1;
+  size_t i = ArenaSlotHash(key) & mask;
+  while (arena_slot_state_[i] == 2) i = (i + 1) & mask;
+  if (arena_slot_state_[i] == 0) ++arena_slots_used_;
+  arena_slot_key_[i] = key;
+  arena_slot_entry_[i] = entry;
+  arena_slot_state_[i] = 2;
+  ++arena_live_;
+}
+
+void Renderer::ArenaErase(uint64_t key) {
+  if (arena_slot_state_.empty()) {
+    return;
+  }
+  const size_t mask = arena_slot_state_.size() - 1;
+  for (size_t i = ArenaSlotHash(key) & mask;; i = (i + 1) & mask) {
+    const uint8_t state = arena_slot_state_[i];
+    if (state == 0) return;
+    if (state == 2 && arena_slot_key_[i] == key) {
+      arena_slot_state_[i] = 1;  // erased: lookups keep probing past it
+      --arena_live_;
+      return;
+    }
+  }
+}
+
+void Renderer::ArenaClear() {
+  // clear() keeps the capacity: nothing is freed, the next fill reuses the memory.
+  arena_entry_list_.clear();
+  arena_pages_.clear();
+  std::fill(arena_slot_state_.begin(), arena_slot_state_.end(), uint8_t(0));
+  arena_slots_used_ = 0;
+  arena_live_ = 0;
+}
+
 // Makes [lo, hi) bytes of the guest vertex buffer available in the arena.
 // Returns false when the buffer has to go through the per-frame upload.
 bool Renderer::ArenaFetch(uint64_t key, uint32_t address, uint32_t size, uint32_t lo, uint32_t hi,
@@ -1618,8 +1688,8 @@ bool Renderer::ArenaFetch(uint64_t key, uint32_t address, uint32_t size, uint32_
   }
   const uint8_t* src = physical_base_ + (address & 0x1FFFFFFF);
   for (int attempt = 0; attempt < 2; ++attempt) {
-    auto it = arena_entries_.find(key);
-    if (it == arena_entries_.end()) {
+    uint32_t index = ArenaLookup(key);
+    if (index == UINT32_MAX) {
       auto ch = arena_changes_.find(key);
       if (ch != arena_changes_.end() && ch->second >= 3) {
         return false;  // rewritten too often to be worth caching
@@ -1630,37 +1700,41 @@ bool Renderer::ArenaFetch(uint64_t key, uint32_t address, uint32_t size, uint32_
         return false;
       }
       ArenaEntry e;
+      e.key = key;
       e.offset = uint32_t(arena_used_);
       e.size = size;
-      uint32_t pages = (size + kArenaPageBytes - 1) / kArenaPageBytes;
-      e.page_hash.assign(pages, 0);
-      e.page_checked.assign(pages, 0);
-      e.page_interval.assign(pages, 1);
+      e.pages = (size + kArenaPageBytes - 1) / kArenaPageBytes;
+      e.first_page = uint32_t(arena_pages_.size());
+      arena_pages_.resize(arena_pages_.size() + e.pages);
       arena_used_ += aligned;
-      it = arena_entries_.emplace(key, std::move(e)).first;
+      index = uint32_t(arena_entry_list_.size());
+      arena_entry_list_.push_back(e);
+      ArenaInsert(key, index);
     }
-    ArenaEntry& e = it->second;
+    const ArenaEntry e = arena_entry_list_[index];
+    ArenaPage* pages = arena_pages_.data() + e.first_page;
     bool changed = false;
     if (hi > lo) {
       uint32_t first = lo / kArenaPageBytes, last = (hi - 1) / kArenaPageBytes;
-      for (uint32_t p = first; p <= last && p < e.page_hash.size(); ++p) {
-        if (e.page_checked[p] == frame_number_) continue;
-        if (e.page_hash[p] && frame_number_ < e.page_checked[p] + e.page_interval[p]) continue;
+      for (uint32_t p = first; p <= last && p < e.pages; ++p) {
+        ArenaPage& page = pages[p];
+        if (page.checked == frame_number_) continue;
+        if (page.hash && frame_number_ < page.checked + page.interval) continue;
         uint32_t page_start = p * kArenaPageBytes;
         uint32_t n = std::min(kArenaPageBytes, size - page_start);
         uint64_t h = HashBytes(src + page_start, n, 0) | 1;
-        if (!e.page_hash[p]) {
+        if (!page.hash) {
           std::memcpy(arena_mapped_ + e.offset + page_start, src + page_start, n);
           vmaFlushAllocation(allocator_, arena_allocation_, e.offset + page_start, n);
-          e.page_hash[p] = h;
+          page.hash = h;
           stats_.arena_bytes += n;
-        } else if (h != e.page_hash[p]) {
+        } else if (h != page.hash) {
           changed = true;
           break;
         } else {
-          e.page_interval[p] = std::min<uint8_t>(e.page_interval[p] * 2, kArenaMaxInterval);
+          page.interval = std::min<uint8_t>(page.interval * 2, kArenaMaxInterval);
         }
-        e.page_checked[p] = frame_number_;
+        page.checked = frame_number_;
       }
     }
     if (!changed) {
@@ -1672,7 +1746,7 @@ bool Renderer::ArenaFetch(uint64_t key, uint32_t address, uint32_t size, uint32_
     // buffers that keep changing).
     uint8_t& count = arena_changes_[key];
     if (count < 255) ++count;
-    arena_entries_.erase(key);
+    ArenaErase(key);
     if (count >= 3) {
       return false;
     }

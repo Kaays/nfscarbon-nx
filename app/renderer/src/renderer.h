@@ -330,20 +330,40 @@ class Renderer {
   bool CreateVertexArena();
   bool ArenaFetch(uint64_t key, uint32_t address, uint32_t size, uint32_t lo, uint32_t hi,
                   uint32_t& dword_offset);
+  // Entries and their page records live in flat vectors and an open-addressing index, so that
+  // starting the arena over is a few clears with no frees. With a std::unordered_map of entries,
+  // each holding three std::vectors, starting over freed ~120,000 nodes and ~360,000 vectors at
+  // once, and that frame took 1.2-3.3 s on the console (the freezes every few minutes in races).
+  struct ArenaPage {
+    uint64_t hash = 0;  // 0 = page not copied yet
+    uint64_t checked = 0;
+    uint8_t interval = 1;
+  };
   struct ArenaEntry {
+    uint64_t key = 0;
     uint32_t offset = 0;  // bytes in the arena
     uint32_t size = 0;
-    std::vector<uint64_t> page_hash;  // 0 = page not copied yet
-    std::vector<uint64_t> page_checked;
-    std::vector<uint8_t> page_interval;
+    uint32_t first_page = 0;  // in arena_pages_
+    uint32_t pages = 0;
   };
+  std::vector<ArenaEntry> arena_entry_list_;
+  std::vector<ArenaPage> arena_pages_;
+  std::vector<uint64_t> arena_slot_key_;
+  std::vector<uint32_t> arena_slot_entry_;  // index in arena_entry_list_
+  std::vector<uint8_t> arena_slot_state_;   // 0 empty, 1 erased, 2 live
+  size_t arena_slots_used_ = 0;             // live + erased
+  size_t arena_live_ = 0;
+  static size_t ArenaSlotHash(uint64_t key) { return size_t((key * 0x9E3779B97F4A7C15ull) >> 20); }
+  uint32_t ArenaLookup(uint64_t key) const;  // UINT32_MAX if absent
+  void ArenaInsert(uint64_t key, uint32_t entry);
+  void ArenaErase(uint64_t key);
+  void ArenaClear();
   VkBuffer arena_buffer_ = VK_NULL_HANDLE;
   VmaAllocation arena_allocation_ = VK_NULL_HANDLE;
   uint8_t* arena_mapped_ = nullptr;
   VkDeviceSize arena_size_ = 0;
   VkDeviceSize arena_used_ = 0;
   bool arena_reset_pending_ = false;
-  std::unordered_map<uint64_t, ArenaEntry> arena_entries_;
   std::unordered_map<uint64_t, uint8_t> arena_changes_;  // >= 3: treated as dynamic
 
   // Frees textures and render targets that have not been used for a while.

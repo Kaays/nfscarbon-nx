@@ -208,3 +208,16 @@ only lets threads of the same priority run, so a lower-priority owner (0x3B) on 
 The new wakeup timing made the race more likely. Fixes: the spinlock really sleeps (20 µs) after 64 failed tries on
 the Switch, and the mixer priority is off by default (`nfscarbon_audio_mixer_priority = 0`), since it never
 reduced the missing blocks.
+
+## Session 14 (2026-10-18), races finish; freezes at 1683 / 844 / 2133
+
+New target: steady 30 fps at CPU 1683 / GPU 844 / RAM 2133. The race-start freeze is gone (spinlock fix): Race Wars
+and a Canyon race played to the end. Sound fine (0-16 missing blocks per 10 s). Canyon 28-30 fps, Race Wars 17-26
+at the start, 28-30 later in the race.
+
+The two long freezes (1.25 s at 15:21:34, 3.3 s at 15:26:45) each came right after `vertex arena full (128 MiB,
+81,761 / 118,867 buffers): starting over`: a single frame whose time is in Draw but in none of its phases, i.e. in
+BeginFrame, which cleared a std::unordered_map of ~120,000 entries, each with three std::vectors (~360,000 frees).
+Next build: the arena keeps its entries and page records in flat vectors with an open-addressing index, so starting
+over clears three vectors and frees nothing. Checked against std::unordered_map with 1.2 M random inserts, lookups
+and erases (no mismatch); clearing 500,000 slots takes ~3.5 ms on the PC.
