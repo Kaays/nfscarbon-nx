@@ -97,3 +97,11 @@ addresses (`tools/find_fingerprints.py`). nfsmw-nx builds one NRO per edition.
 
 **Size: large.** Shaders are translated and compiled at run time (glslang on the Switch CPU), which causes the
 first-race stutter. nfsmw-nx translates them ahead of time into a shader pack made from the user's disc.
+
+## 10. Random white flash
+
+**Size: unknown.** A short, mostly transparent white flash at random places in races (seen in Race Wars). It is
+not the game's own flash at speedtrap checkpoints and lap crossings: that one is longer and happens only there.
+Likely a render target or resolve read before it is written (stale or cleared contents for one frame), or a
+post-processing pass (bloom, exposure) getting a wrong value for a frame. `carbon_gpu_dump_frame_interval` around the
+moment, or a short video at 60 fps, would help find which pass it is.
