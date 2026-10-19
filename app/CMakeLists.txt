@@ -33,6 +33,8 @@ set(NFSCARBON_SOURCES
     src/frame_handoff_hook.cpp
     # The game's audio mixer thread above the other game threads.
     src/audio_thread_hook.cpp
+    # The game's audio server: wait for its packet before each audio frame, rescue it if it stalls.
+    src/audio_server_hook.cpp
     # PGO: profile dump of the instrumented build (empty unless NFSCARBON_PGO=generate).
     src/nfscarbon_pgo.cpp
 )
