@@ -64,7 +64,7 @@ thread, audio mixer) fill the rest. There is no single big bug left: it is many 
 
    ```text
    sdmc:/switch/nfscarbon-nx/
-     nfscarbon.nro    
+     nfscarbon.nro
      nfscarbon.toml            (settings)
      game_root/                (the files of your disc: default.xex, NFS/, MOVIES/, ...)
    ```
