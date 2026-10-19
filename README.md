@@ -59,12 +59,12 @@ thread, audio mixer) fill the rest. There is no single big bug left: it is many 
 
 ## Install (prebuilt NRO)
 
-1. Download `nfscarbon-nx.nro` and `nfscarbon.toml` from the [Releases](../../releases) page.
+1. Download `nfscarbon.nro` and `nfscarbon.toml` from the [Releases](../../releases) page.
 2. Put them on the SD card with the files of your disc:
 
    ```text
    sdmc:/switch/nfscarbon-nx/
-     nfscarbon-nx.nro
+     nfscarbon.nro    
      nfscarbon.toml            (settings)
      game_root/                (the files of your disc: default.xex, NFS/, MOVIES/, ...)
    ```
