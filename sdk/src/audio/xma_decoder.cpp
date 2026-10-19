@@ -240,7 +240,26 @@ int64_t AhoraNs() {
 }
 
 void MarcarPendiente(uint32_t context_id) {
-  g_pendientes[context_id / 32].fetch_or(1u << (context_id % 32), std::memory_order_release);
+  // seq_cst: pairs with g_trabajador_dormido (below).
+  g_pendientes[context_id / 32].fetch_or(1u << (context_id % 32), std::memory_order_seq_cst);
+}
+
+/*
+ * nfscarbon-nx: the kick only wakes the worker if it is asleep. In Race Wars the game kicks ~2,800 times a
+ * second from its audio server, and every Set() of the event (a futex wake, svcArbitrateUnlock) cost the
+ * server ~10 % of its time (stack sampling, session 22) while the worker was usually awake anyway.
+ * Dekker pattern: the worker publishes "asleep" and then looks for marks; the kick publishes its mark and
+ * then looks at "asleep". With seq_cst on both sides at least one of them sees the other.
+ */
+std::atomic<bool> g_trabajador_dormido{true};
+
+bool HayPendientes() {
+  for (uint32_t palabra = 0; palabra < kPalabrasPendientes; ++palabra) {
+    if (g_pendientes[palabra].load(std::memory_order_seq_cst)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // Returns true if this thread takes the context; only one can.
@@ -373,8 +392,15 @@ void XmaDecoder::WorkerThreadMain() {
     if (did_work) {
       continue;
     }
-    // No work done this iteration, block until signaled.
+    // No work done this iteration, block until signaled. Publish that it sleeps first, then look once
+    // more for marks: a kick that missed the flag has its mark seen here.
+    g_trabajador_dormido.store(true, std::memory_order_seq_cst);
+    if (HayPendientes()) {
+      g_trabajador_dormido.store(false, std::memory_order_relaxed);
+      continue;
+    }
     rex::thread::Wait(work_event_.get(), false);
+    g_trabajador_dormido.store(false, std::memory_order_seq_cst);
   }
 }
 
@@ -545,7 +571,9 @@ void XmaDecoder::WriteRegister(uint32_t addr, uint32_t value) {
       }
       if (alguno) {
         g_pendiente_desde_ns.store(AhoraNs(), std::memory_order_release);
-        work_event_->Set();
+        if (g_trabajador_dormido.load(std::memory_order_seq_cst)) {
+          work_event_->Set();
+        }
       }
     }
     for (int i = 0; kicked_value && i < 32; ++i, kicked_value >>= 1) {

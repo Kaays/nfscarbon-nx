@@ -35,6 +35,8 @@ set(NFSCARBON_SOURCES
     src/audio_thread_hook.cpp
     # The game's audio server: wait for its packet before each audio frame, rescue it if it stalls.
     src/audio_server_hook.cpp
+    # Native versions of the audio server's hottest loops (gain sum, filter, resampler).
+    src/audio_native.cpp
     # PGO: profile dump of the instrumented build (empty unless NFSCARBON_PGO=generate).
     src/nfscarbon_pgo.cpp
 )
