@@ -221,3 +221,11 @@ BeginFrame, which cleared a std::unordered_map of ~120,000 entries, each with th
 Next build: the arena keeps its entries and page records in flat vectors with an open-addressing index, so starting
 over clears three vectors and frees nothing. Checked against std::unordered_map with 1.2 M random inserts, lookups
 and erases (no mismatch); clearing 500,000 slots takes ~3.5 ms on the PC.
+
+## Session 22 (2026-10-19), mixer above the renderer
+
+At 1683 / 844 / 2133, three Race Wars of the challenge series (first lap each): missing audio blocks at the start
+went from 268-391 per 10 s (mixer at 0x2D) to 59-179, then 0-30 once the pack spreads out. The bad part is now only
+the first 20-40 s, when the scene has 3500-5700 draws per frame, the game runs at 19-24 fps and the CPU is at
+270-286 % of 300. Stack samples there are flat (no function above ~4 % of a game thread), so the next big step is
+fewer draws (the game's LOD) or a higher CPU clock.
