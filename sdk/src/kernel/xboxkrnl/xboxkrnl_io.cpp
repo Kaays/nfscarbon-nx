@@ -65,8 +65,9 @@ REXCVAR_DEFINE_INT32(nfsmw_io_aviso_ms, 30, "Filesystem",
  * reads 64 MB (worst read 152 ms). With this on, a read that is overlapped (file opened without
  * FILE_SYNCHRONOUS_IO, an event, an explicit offset, no APC) returns PENDING at once and a host thread
  * does the read, writes the status block and signals the event, as the Xbox 360 does.
+ * On by default since session 18: five Canyon starts, no problem, the start freeze shorter.
  */
-REXCVAR_DEFINE_BOOL(nfscarbon_io_async, false, "Filesystem",
+REXCVAR_DEFINE_BOOL(nfscarbon_io_async, true, "Filesystem",
                     "Overlapped NtReadFile calls (event, no APC) complete on an I/O thread instead of "
                     "inside the call. false = every read completes inside NtReadFile, as before");
 REXCVAR_DEFINE_INT32(nfsmw_io_resumen_s, 15, "Filesystem",

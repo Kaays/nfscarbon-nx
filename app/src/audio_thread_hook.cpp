@@ -13,7 +13,11 @@
 // worker) are at 0x2B. Horizon does not time-slice below 0x3B, which is safe only because the mixer
 // blocks on its own between blocks (it is at 40-65 % of a core).
 //
-// Off by default since session 13: it did not reduce the missing blocks, and with the mixer at 0x39
+// On again (0x39) since session 18: with the spinlock fix the freeze is gone, and in Race Wars the
+// silent game frames (blocks the game hands over empty, `huecos` in rex_perfil.log) went from 350-450
+// to 130-250 per 10 s. The mixer itself costs 58 % of a core there, so the rest needs a cheaper mixer.
+//
+// Off by default in session 13: it did not reduce the missing blocks, and with the mixer at 0x39
 // the game froze at the start of a race with the mixer at 100 % of a core, most likely spinning on a
 // guest spinlock (xeKeKfAcquireSpinLock yielded, which on Horizon never lets a 0x3B owner run).
 
@@ -30,7 +34,7 @@
 extern "C" bool RexSwitchSetCurrentThreadPriorityOk(int priority);
 #endif
 
-REXCVAR_DEFINE_INT32(nfscarbon_audio_mixer_priority, 0, "Carbon",
+REXCVAR_DEFINE_INT32(nfscarbon_audio_mixer_priority, 0x39, "Carbon",
                      "Switch: Horizon priority of the game's audio mixer thread (RWAudioCore Dac). "
                      "0 = leave it at 0x3B like the rest of the game")
     .range(0, 0x3B)
