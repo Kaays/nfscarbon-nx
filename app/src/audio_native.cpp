@@ -16,6 +16,8 @@
 //   sub_826C8BB0  one-pole filter: y = s * b + a * y (fmuls then fmadds), only when it has no
 //                 sub-filter (+8 == 0); with one it calls the recompiled function as before.
 //   sub_826D15D0  linear resampler, 16.16 position: out = s0 + (s1 - s0) * (frac * k).
+//   sub_826CB1D8  the same resampler with a 32-bit step (the server's biggest single item).
+//   sub_826BEB68  16-bit samples to float.
 //
 // nfscarbon_audio_native = false puts the recompiled code back without a new NRO.
 
@@ -143,6 +145,42 @@ uint32_t Resample(uint8_t* base, int32_t count, uint32_t src, uint32_t dst, uint
   return step;
 }
 
+// sub_826CB1D8: the same linear resampler with a plain 32-bit step (r4 = count, r5 = src, r6 = dst,
+// r7 = &index, r8 = &position, r9 = step). The biggest single item of the server in Race Wars (stack
+// sampling, session 22; LTO inlines it into its caller sub_826CB350). Returns the new r3 (dst + 4 * count
+// when count > 0, otherwise the old r3).
+uint32_t Resample32(uint8_t* base, uint32_t r3, int32_t count, uint32_t src, uint32_t dst,
+                    uint32_t index_ptr, uint32_t pos_ptr, uint32_t step) {
+  uint32_t index = Load32(base, index_ptr);
+  uint32_t frac = Load32(base, pos_ptr) >> 16;  // lhz
+  if (count > 0) {
+    const float k = LoadF(base, 0x820C7E18u);
+    for (int32_t i = 0; i < count; ++i) {
+      const uint32_t at = index * 4 + src;
+      const float s0 = LoadF(base, at);
+      const float d = Rounded(LoadF(base, at + 4) - s0);
+      const float t = Rounded(float(frac) * k);
+      StoreF(base, dst + 4 * i, std::fmaf(d, t, s0));
+      const uint32_t moved = frac + step;
+      index += (moved >> 16) & 0xFFFFu;
+      frac = moved & 0xFFFFu;
+    }
+    r3 = dst + 4 * uint32_t(count);
+  }
+  Store32(base, index_ptr, index);
+  Store32(base, pos_ptr, (frac << 16) & 0xFFFF0000u);
+  return r3;
+}
+
+// sub_826BEB68: 16-bit samples to float (r3 = count, r4 = src, r5 = dst).
+void Int16ToFloat(uint8_t* base, int32_t count, uint32_t src, uint32_t dst) {
+  for (int32_t i = 0; i < count; ++i) {
+    uint16_t v;
+    std::memcpy(&v, base + src + 2 * i, 2);
+    StoreF(base, dst + 4 * i, float(int16_t(__builtin_bswap16(v))));
+  }
+}
+
 }  // namespace nfscarbon::audio_native
 
 #ifndef NFSCARBON_AUDIO_NATIVE_TEST
@@ -150,6 +188,27 @@ uint32_t Resample(uint8_t* base, int32_t count, uint32_t src, uint32_t dst, uint
 extern "C" void __imp__sub_826CD8D0(PPCContext& __restrict ctx, uint8_t* base);
 extern "C" void __imp__sub_826C8BB0(PPCContext& __restrict ctx, uint8_t* base);
 extern "C" void __imp__sub_826D15D0(PPCContext& __restrict ctx, uint8_t* base);
+extern "C" void __imp__sub_826CB1D8(PPCContext& __restrict ctx, uint8_t* base);
+extern "C" void __imp__sub_826BEB68(PPCContext& __restrict ctx, uint8_t* base);
+
+extern "C" REX_FUNC(sub_826CB1D8) {
+  if (!REXCVAR_GET(nfscarbon_audio_native)) {
+    __imp__sub_826CB1D8(ctx, base);
+    return;
+  }
+  ctx.fpscr.disableFlushMode();
+  ctx.r3.u64 = nfscarbon::audio_native::Resample32(base, ctx.r3.u32, ctx.r4.s32, ctx.r5.u32, ctx.r6.u32,
+                                                   ctx.r7.u32, ctx.r8.u32, ctx.r9.u32);
+}
+
+extern "C" REX_FUNC(sub_826BEB68) {
+  if (!REXCVAR_GET(nfscarbon_audio_native)) {
+    __imp__sub_826BEB68(ctx, base);
+    return;
+  }
+  ctx.fpscr.disableFlushMode();
+  nfscarbon::audio_native::Int16ToFloat(base, ctx.r3.s32, ctx.r4.u32, ctx.r5.u32);
+}
 
 extern "C" REX_FUNC(sub_826CD8D0) {
   if (!REXCVAR_GET(nfscarbon_audio_native)) {
