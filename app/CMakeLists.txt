@@ -33,6 +33,8 @@ set(NFSCARBON_SOURCES
     src/frame_handoff_hook.cpp
     # The game's audio mixer thread above the other game threads.
     src/audio_thread_hook.cpp
+    # PGO: profile dump of the instrumented build (empty unless NFSCARBON_PGO=generate).
+    src/nfscarbon_pgo.cpp
 )
 
 # Native Vulkan renderer (renderer/): an OBJECT library linked into the NRO on
@@ -70,6 +72,42 @@ if(REXGLUE_PLATFORM_SWITCH)
     # tools/direct_calls.py after codegen so calls between unhooked game
     # functions can be inlined across files.
     option(NFSCARBON_LTO "LTO over the game code and the app (Switch)" ON)
+    # Profile-guided optimization in two builds from the same build folder (nfsmw-nx docs/toolchain.md):
+    #   generate: instrumented, no LTO; the game writes the profile to sdmc:/switch/nfscarbon-nx/pgo every
+    #             3 minutes (src/nfscarbon_pgo.cpp).
+    #   use:      the .gcda files copied to pgo/ at the root of the repository; LTO on.
+    # The generated code and the sources must not change between the two.
+    set(NFSCARBON_PGO "" CACHE STRING "Profile-guided optimization: empty, generate or use")
+    get_filename_component(NFSCARBON_PGO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../pgo" ABSOLUTE)
+    if(NFSCARBON_PGO STREQUAL "generate")
+        # -fno-profile-values: libgcov's indirect-call profiler reads TLS with mrs tpidr_el0, which is 0
+        # on Horizon (libnx uses -mtp=soft): the instrumented build crashed before main in nfsmw-nx.
+        set(NFSCARBON_PGO_OPTIONS -fprofile-generate=${NFSCARBON_PGO_DIR}
+                                  "-fprofile-prefix-path=${CMAKE_BINARY_DIR}"
+                                  -fprofile-update=single -fno-profile-values)
+        target_link_options(nfscarbon PRIVATE -fprofile-generate -Wl,--wrap=fopen)
+        target_compile_definitions(nfscarbon PRIVATE NFSCARBON_PGO_GENERATE=1
+                                   "NFSCARBON_PGO_DIR=\"${NFSCARBON_PGO_DIR}\"")
+        set(NFSCARBON_LTO OFF)
+    elseif(NFSCARBON_PGO STREQUAL "use")
+        # -fprofile-correction: counters updated by several threads without synchronization come out
+        # negative, and GCC rejects them as a corrupt profile without it.
+        set(NFSCARBON_PGO_OPTIONS -fprofile-use=${NFSCARBON_PGO_DIR}
+                                  "-fprofile-prefix-path=${CMAKE_BINARY_DIR}"
+                                  -fprofile-partial-training -fno-profile-values -fprofile-correction
+                                  -Wno-missing-profile -Wno-error=coverage-mismatch)
+        target_link_options(nfscarbon PRIVATE -fprofile-use -fprofile-partial-training -fprofile-correction)
+    elseif(NOT NFSCARBON_PGO STREQUAL "")
+        message(FATAL_ERROR "NFSCARBON_PGO must be empty, generate or use (it is '${NFSCARBON_PGO}')")
+    endif()
+    if(NFSCARBON_PGO_OPTIONS)
+        foreach(target nfscarbon_recomp nfscarbon rexgpu-carbon)
+            if(TARGET ${target})
+                target_compile_options(${target} PRIVATE ${NFSCARBON_PGO_OPTIONS})
+            endif()
+        endforeach()
+        message(STATUS "PGO: ${NFSCARBON_PGO} (profile folder ${NFSCARBON_PGO_DIR})")
+    endif()
     if(NFSCARBON_LTO)
         foreach(target nfscarbon_recomp nfscarbon rexgpu-carbon)
             if(TARGET ${target})

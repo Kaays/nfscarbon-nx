@@ -15,6 +15,15 @@ if [ ! -f "$OUT/CMakeCache.txt" ]; then
     -DCMAKE_TOOLCHAIN_FILE="$ROOT/tools/switch/cmake/switch-devkitA64.cmake" \
     -DREXSDK_DIR="$ROOT/sdk" -DREXGLUE_SWITCH_NVK_SDK="$MESA"
 fi
+# PGO=generate | use | off (empty keeps what the build folder already has). See app/CMakeLists.txt.
+if [ -n "${PGO:-}" ]; then
+  [ "$PGO" = off ] && PGO=""
+  if [ "$PGO" = use ] && ! ls "$ROOT"/pgo/*.gcda >/dev/null 2>&1; then
+    echo "PGO=use: no .gcda files in $ROOT/pgo (copy them from sdmc:/switch/nfscarbon-nx/pgo)" >&2
+    exit 1
+  fi
+  cmake -S "$ROOT/app" -B "$OUT" -DNFSCARBON_PGO="$PGO" >/dev/null
+fi
 start=$(date +%s)
 cmake --build "$OUT" -j "$JOBS"
 echo "built $OUT/nfscarbon.nro in $(( ($(date +%s) - start) / 60 )) min"
