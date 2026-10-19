@@ -119,7 +119,7 @@ Notes:
 | `carbon_gpu_render_scale` | `100` | resolution in % of 1280x720. `50` makes the menus GPU-light |
 | `carbon_gpu_reflection_faces` | `2` | car reflection cube faces redrawn per frame (6 = all) |
 | `carbon_gpu_mirror_half_rate` | `true` | rear-view mirror at half rate |
-| `nfscarbon_audio_mixer_priority` | `0x43` | Horizon priority of the game's audio mixer thread (0 = untouched) |
+| `nfscarbon_audio_mixer_priority` | `0x2A` (42) | Horizon priority of the game's audio mixer thread (0 = untouched) |
 | `nfscarbon_handoff_sleep` | `true` | the game's two render threads sleep instead of spinning on `Sleep(0)` |
 | `nfscarbon_renderer` | `carbon` | `carbon` native renderer, `xenos` the SDK's GPU emulation (slow, to compare) |
 

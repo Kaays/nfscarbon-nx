@@ -114,6 +114,7 @@ class CommandProcessor {
   bool ExecuteType3(Reader& r, uint32_t packet);
   void WriteRegister(uint32_t index, uint32_t value);
   void WriteRegistersFromGuest(uint32_t base_index, const uint32_t* guest_be, uint32_t count);
+  void MarkFloatConstantsWritten(uint32_t first, uint32_t count);
   void WriteRegistersFromReader(Reader& r, uint32_t base_index, uint32_t count);
   bool ExecuteDraw(Reader& r, uint32_t count_remaining);
   void LoadShader(xenos::ShaderType type, const uint32_t* guest_be, uint32_t dword_count);

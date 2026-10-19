@@ -287,7 +287,34 @@ bool CommandProcessor::ExecutePacket(Reader& r) {
   return false;
 }
 
+// Shader and fetch constants (0x4000 up) have no side effects besides the float constants'
+// dirty flags, so a run that lies entirely there is copied in one loop. They are most of the
+// register traffic: CommandProcessor::ExecutePacket was 7.8 % of the renderer thread in Race Wars.
+void CommandProcessor::MarkFloatConstantsWritten(uint32_t first, uint32_t count) {
+  const uint32_t last = first + count - 1;
+  if (first < kRegFetchConstants) {
+    renderer_->OnFloatConstantWritten(first - kRegFloatConstants);
+    const uint32_t last_float = std::min<uint32_t>(last, kRegFetchConstants - 1);
+    renderer_->OnFloatConstantWritten(last_float - kRegFloatConstants);
+  }
+}
+
 void CommandProcessor::WriteRegistersFromReader(Reader& r, uint32_t base_index, uint32_t count) {
+  if (count && base_index >= kRegFloatConstants && base_index + count <= kRegisterCount) {
+    uint32_t* dst = &regs_.values[base_index];
+    uint32_t left = count;
+    while (left) {
+      // Contiguous dwords before the ring wraps.
+      uint32_t run = r.ring ? std::min(left, r.capacity - r.read) : left;
+      const uint32_t* src = r.base + r.read;
+      for (uint32_t i = 0; i < run; ++i) dst[i] = ByteSwap32(src[i]);
+      dst += run;
+      left -= run;
+      r.read = r.ring ? ((r.read + run) & (r.capacity - 1)) : r.read + run;
+    }
+    MarkFloatConstantsWritten(base_index, count);
+    return;
+  }
   for (uint32_t i = 0; i < count; ++i) {
     WriteRegister(base_index + i, r.Read());
   }
@@ -295,6 +322,12 @@ void CommandProcessor::WriteRegistersFromReader(Reader& r, uint32_t base_index, 
 
 void CommandProcessor::WriteRegistersFromGuest(uint32_t base_index, const uint32_t* guest_be,
                                                uint32_t count) {
+  if (count && base_index >= kRegFloatConstants && base_index + count <= kRegisterCount) {
+    uint32_t* dst = &regs_.values[base_index];
+    for (uint32_t i = 0; i < count; ++i) dst[i] = ByteSwap32(guest_be[i]);
+    MarkFloatConstantsWritten(base_index, count);
+    return;
+  }
   for (uint32_t i = 0; i < count; ++i) {
     WriteRegister(base_index + i, ByteSwap32(guest_be[i]));
   }

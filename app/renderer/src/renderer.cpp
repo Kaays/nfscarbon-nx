@@ -321,9 +321,18 @@ void ConvertIndices32(const uint8_t* src, uint32_t* out, uint32_t count, xenos::
 #undef CARBON_CONV32
 }
 
+// Called ~10 times per draw (draw timers and the phase profile). On the Switch it reads the
+// 19.2 MHz system counter directly: steady_clock::now() was 2.3 % of the renderer thread's samples
+// in Race Wars (~5000 draws per frame).
 double NowSeconds() {
+#if defined(__SWITCH__) && defined(__aarch64__)
+  uint64_t ticks;
+  asm volatile("mrs %0, cntpct_el0" : "=r"(ticks));
+  return double(ticks) * (1.0 / 19200000.0);
+#else
   return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
       .count();
+#endif
 }
 
 std::filesystem::path g_glsl_dump_dir;
