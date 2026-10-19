@@ -13,17 +13,11 @@ It is not an emulator. The PowerPC code of the game's `default.xex` is staticall
 native Vulkan renderer running on NVK (Mesa).
 
 > [!IMPORTANT]
-> **This is a starting point, not a finished port.** The game boots, the menus work and races are playable, but at
-> the Switch's stock clocks it runs at **13-25 FPS** and the sound breaks up in crowded races. With an overclock it
-> holds 30 FPS. The repository is public so that others can pick it up and take it further: see
+> **Work in progress.** The game boots, the menus work and races are playable. At **1683 MHz** (CPU) it holds
+> 28-30 FPS in normal races and police chases; only the first 20-40 s of Race Wars, with the whole pack on screen,
+> drop to 19-24 FPS with some popping in the sound. From 1785 MHz it holds 30 FPS in most places. At the stock
+> 1020 MHz it runs at 13-25 FPS. Latest version: see [Releases](../../releases). Help is welcome: see
 > [How to help](#how-to-help).
-
-> [!NOTE]
-> **Made with Claude.** This port was put together by someone without a background in recompilation, GPU drivers
-> or console development, working step by step with [Claude](https://claude.ai) (Anthropic's AI assistant): Claude
-> wrote and changed the code and the build scripts, and the testing on a real console, the logs and the decisions
-> were mine. Treat the code accordingly, review it, and do not assume something is right because it is here.
-> Corrections are very welcome.
 
 ## Where it stands
 
@@ -157,8 +151,13 @@ changes, take a new profile.
 3. **The renderer** (`app/renderer/`): from nfs-carbon-recomp. It translates Xenos shaders at run time and keeps
    a Vulkan pipeline cache on the SD card. On the Switch it is linked into the NRO.
 4. **Hooks** (`app/src/`): the D3D ring wait sleeps instead of spinning, the frame handoff between the game's two
-   render threads sleeps instead of `Sleep(0)` (ported from nfsmw-nx), the audio mixer thread priority, and a
-   tolerance for indirect calls the analysis missed.
+   render threads sleeps instead of `Sleep(0)` (ported from nfsmw-nx), the audio mixer thread priority, a watch on
+   the game's audio server that rescues stalled packets, native (bit-exact) versions of the audio server's hottest
+   loops, and a tolerance for indirect calls the analysis missed.
+5. **Audio decoding** (`sdk/src/audio/`): XMA through FFmpeg, the first frames of each stream on the calling thread
+   and the rest on a worker.
+6. **Build**: LTO, the hottest functions grouped at the start of the code (`app/function_order.ld`) and, optionally,
+   a profile-guided build (see [Faster build with PGO](#faster-build-with-pgo-recommended)).
 
 ## How to help
 
@@ -175,6 +174,8 @@ When something goes wrong, please [open an issue](../../issues/new/choose) with:
 To see where a thread spends its time, put an empty file `perfil_pilas.flag` in `logs/rex/`, play for a minute,
 and run `python3 tools/symbolize_profile.py rex_perfil.log app/out/switch/nfscarbon` on the PC with the same
 build. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Review changes before relying on them: corrections and pull requests are very welcome.
 
 ## Edition
 
