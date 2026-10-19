@@ -65,9 +65,12 @@ REXCVAR_DEFINE_INT32(nfsmw_io_aviso_ms, 30, "Filesystem",
  * reads 64 MB (worst read 152 ms). With this on, a read that is overlapped (file opened without
  * FILE_SYNCHRONOUS_IO, an event, an explicit offset, no APC) returns PENDING at once and a host thread
  * does the read, writes the status block and signals the event, as the Xbox 360 does.
- * On by default since session 18: five Canyon starts, no problem, the start freeze shorter.
+ * On by default in session 18 (five Canyon starts, the start freeze shorter); off again in session 20:
+ * two first launches hung entering a race, each with an XMA error just before ("no bits to copy",
+ * "would have to skip 769 bits"), i.e. the game read audio data that was not all there yet. The
+ * status block is now published after a release fence, but until that is tested it stays off.
  */
-REXCVAR_DEFINE_BOOL(nfscarbon_io_async, true, "Filesystem",
+REXCVAR_DEFINE_BOOL(nfscarbon_io_async, false, "Filesystem",
                     "Overlapped NtReadFile calls (event, no APC) complete on an I/O thread instead of "
                     "inside the call. false = every read completes inside NtReadFile, as before");
 REXCVAR_DEFINE_INT32(nfsmw_io_resumen_s, 15, "Filesystem",
@@ -638,8 +641,13 @@ void HiloLecturasAsincronas() {
     l.file->ReadThen(l.buffer, l.length, l.offset, l.apc_context,
                      [&](X_STATUS status, uint32_t bytes) {
                        if (l.iosb) {
+                         // The data and the byte count must be visible before the status: the game
+                         // may poll the status (not the event) from another core, and ARM reorders stores.
+                         std::atomic_thread_fence(std::memory_order_release);
                          l.iosb->information = bytes;
+                         std::atomic_thread_fence(std::memory_order_release);
                          l.iosb->status = status;
+                         std::atomic_thread_fence(std::memory_order_seq_cst);
                        }
                        const uint64_t fin = AhoraUs();
                        const std::string modo = " async, pedida por " + l.origen;
