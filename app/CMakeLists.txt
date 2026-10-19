@@ -86,6 +86,23 @@ if(REXGLUE_PLATFORM_SWITCH)
         target_compile_options(nfscarbon_recomp PRIVATE -O2)
     endif()
 
+    # Hot functions grouped at the start of .text (function_order.ld, from console stack sampling in
+    # Race Wars, Canyon and the menus; tools/hot_functions.py). Tens of MB of code against the A57's
+    # 48 KB instruction cache and small TLB: scattered hot code walks the page tables on far jumps.
+    # It only moves functions. Needs binutils 2.43+ (--section-ordering-file).
+    option(NFSCARBON_FUNCTION_ORDER "Group the hot functions at the start of .text" ON)
+    if(NFSCARBON_FUNCTION_ORDER AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/function_order.ld")
+        target_link_options(nfscarbon PRIVATE
+            "-Wl,--section-ordering-file,${CMAKE_CURRENT_SOURCE_DIR}/function_order.ld")
+        set_property(TARGET nfscarbon APPEND PROPERTY LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/function_order.ld")
+        # libnx's start-up code must stay at address 0 or the NRO does not boot (nfsmw-nx lost four
+        # builds to this). Stop the build if the ordering moved it.
+        add_custom_command(TARGET nfscarbon POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -DNM=${CMAKE_NM} -DELF=$<TARGET_FILE:nfscarbon>
+                    -P ${CMAKE_CURRENT_SOURCE_DIR}/../tools/switch/cmake/check_start.cmake
+            VERBATIM)
+    endif()
+
     # Homebrew Menu icon: a 256x256 JPEG (original artwork, no game assets).
     # Without it the NRO gets libnx's default icon.
     # A personal icon in nfscarbon_icon_local.jpg (ignored by git, tools/make_icon.py) takes precedence.

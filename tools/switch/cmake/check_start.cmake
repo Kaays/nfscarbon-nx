@@ -1,0 +1,16 @@
+# Fails the build if _start is not at address 0 (see NFSCARBON_FUNCTION_ORDER in app/CMakeLists.txt).
+execute_process(COMMAND ${NM} ${ELF} OUTPUT_VARIABLE symbols RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "check_start: ${NM} failed on ${ELF}")
+endif()
+string(REGEX MATCH "([0-9a-fA-F]+) [Tt] _start\n" line "${symbols}")
+if(NOT line)
+  message(FATAL_ERROR "check_start: no _start in ${ELF}")
+endif()
+set(raw "${CMAKE_MATCH_1}")
+string(REGEX REPLACE "^0+" "" address "${raw}")
+if(NOT address STREQUAL "")
+  message(FATAL_ERROR "check_start: _start is at 0x${raw}, not 0: the NRO would not boot. "
+                      "Fix app/function_order.ld or build with -DNFSCARBON_FUNCTION_ORDER=OFF")
+endif()
+message(STATUS "check_start: _start at 0")
