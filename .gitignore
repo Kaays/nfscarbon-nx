@@ -35,3 +35,9 @@ __pycache__/
 # --- Personal icon (may be made from copyrighted art: never published) ---------
 tools/switch/icon/nfscarbon_icon_local.jpg
 pgo/
+
+# --- Third-party sources fetched by tools/fetch_thirdparty.py -----------------
+# Only the files this port changed are tracked (they stay tracked); the rest is downloaded. New port changes in
+# here need `git add -f`.
+sdk/thirdparty/*
+!sdk/thirdparty/CMakeLists.txt

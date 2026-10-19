@@ -48,14 +48,20 @@ change in Most Wanted.
 13-450 times per 10 s in Race Wars (`rex_perfil.log`, "solicitudes sin datos").
 
 What is known: the game's mixer (`sub_826C6AB0`, thread entry `sub_826C6CD0`) double-buffers 256-sample blocks, so it
-is at most ~10 ms ahead. Any delay loses a block. Raising its priority to 0x39 did not help, because it still yields
-to the renderer (0x2C) and the SDK's audio threads (0x2B). Options:
+is at most ~10 ms ahead. Any delay loses a block. Done so far (v0.2.0, details in
+[measurements.md](measurements.md)):
 
-- a higher priority (`nfscarbon_audio_mixer_priority = 43`, i.e. 0x2B), being tested;
-- deeper buffering on the SDK side (`sdk/src/audio/switch/switch_audio_system.cpp`), or more buffers in the game;
-- a cheaper mixer: nfsmw-nx replaced Most Wanted's mixing and resampling with native code
-  (`nfsmw_audio_suma.cpp`, `nfsmw_audio_remuestreo.cpp`). Carbon's audio engine may be close enough to reuse that
-  approach.
+- the mixer at priority 0x2A, above the renderer and the SDK's audio threads (Horizon only moves a woken thread to
+  an idle core, so at a lower priority it waited behind the renderer on its own core);
+- a watch on the audio server: each frame waits briefly for its packet and rescues a stalled one
+  (`app/src/audio_server_hook.cpp`);
+- XMA decoding in a hybrid mode (first frames of each stream on the calling thread, the rest on a worker);
+- native, bit-exact versions of the hottest mixing loops (`app/src/audio_native.cpp`: gain sum, one-pole filter,
+  two resamplers, int16 to float).
+
+At 1683 MHz the missing blocks are now only at the start of Race Wars (59-179 per 10 s for 20-40 s), when the CPU is
+saturated. Next: more native loops (`sub_826D1678` volume ramp, `sub_826B56A8`, `sub_826CCA20`), and fewer draws in
+that scene (item 4).
 
 ## 4. The game's own threads
 
