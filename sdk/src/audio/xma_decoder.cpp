@@ -45,7 +45,11 @@ REXCVAR_DECLARE(bool, audio_diag_prioridad_critica);  // definida en audio_syste
  * a single context, and the data is ready in 14-16 us on average (0.51 ms worst case), far below the
  * 5.3 ms of an audio block. 0 differences from the recompiled code.
  */
-#if REX_PLATFORM_SWITCH
+// nfscarbon-nx: 0 on the Switch too. With the worker, about half of the cold starts failed the first
+// music decode ("would have to skip N bits"), the game's audio stopped and races never loaded; decoding on
+// the calling thread, eight starts in a row were clean (session 21). Most likely the worker and the game
+// touch the context at the same time.
+#if REX_PLATFORM_SWITCH && 0
 #define REX_XMA_EN_TRABAJADOR_POR_DEFECTO 1
 #else
 #define REX_XMA_EN_TRABAJADOR_POR_DEFECTO 0

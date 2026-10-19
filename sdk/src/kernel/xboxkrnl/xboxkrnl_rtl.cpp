@@ -13,6 +13,9 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
 #include <algorithm>
+#include <mutex>
+#include <map>
+#include <chrono>
 #include <string>
 
 #include <rex/chrono/chrono_steady_cast.h>
@@ -376,6 +379,63 @@ u32 RtlInitializeCriticalSectionAndSpinCount_entry(ppc_ptr_t<X_RTL_CRITICAL_SECT
   return xeRtlInitializeCriticalSectionAndSpinCount(cs, cs.guest_address(), spin_count);
 }
 
+namespace {
+/*
+ * nfscarbon-nx, measurement only: how long the game's audio server (RWAudioCore Dac) waits for critical
+ * sections, and which thread owned them. In Race Wars the server runs at 0x2D, is busy 75 % of the time
+ * and still delivers only half of its packets: if it waits on locks held by game threads at 0x3A/0x3B
+ * (guest critical sections have no priority inheritance), it shows here. A line every 10 s.
+ */
+struct EsperaCs {
+  uint64_t veces = 0;
+  uint64_t us = 0;
+  uint64_t max_us = 0;
+};
+std::mutex g_esperas_cs_mutex;
+std::map<std::string, EsperaCs> g_esperas_cs;
+std::chrono::steady_clock::time_point g_esperas_cs_desde = std::chrono::steady_clock::now();
+
+bool EsHiloServidorAudio() {
+  thread_local int es = -1;
+  if (es < 0) {
+    auto* hilo = rex::thread::Thread::GetCurrentThread();
+    es = hilo && hilo->name().rfind("RWAudioCore", 0) == 0 ? 1 : 0;
+  }
+  return es == 1;
+}
+
+void AnotarEsperaCs(uint32_t dueno, uint64_t us) {
+  std::string nombre = "?";
+  if (dueno) {
+    if (auto hilo = XObject::GetNativeObject<XThread>(kernel_state(),
+                                                      kernel_memory()->TranslateVirtual(dueno))) {
+      if (hilo->thread()) {
+        nombre = hilo->thread()->name();
+      }
+    }
+  }
+  const auto ahora = std::chrono::steady_clock::now();
+  std::lock_guard<std::mutex> lock(g_esperas_cs_mutex);
+  EsperaCs& e = g_esperas_cs[nombre];
+  ++e.veces;
+  e.us += us;
+  e.max_us = std::max(e.max_us, us);
+  const double s = std::chrono::duration<double>(ahora - g_esperas_cs_desde).count();
+  if (s >= 10.0) {
+    std::string texto;
+    uint64_t total_us = 0;
+    for (const auto& [n, v] : g_esperas_cs) {
+      total_us += v.us;
+      texto += fmt::format(" | {}: {} veces, {:.1f} ms, max {:.1f} ms", n, v.veces, v.us / 1000.0, v.max_us / 1000.0);
+    }
+    REXKRNL_INFO("[audio] el servidor de audio espero secciones criticas {:.1f} ms en {:.1f} s{}", total_us / 1000.0,
+                 s, texto);
+    g_esperas_cs.clear();
+    g_esperas_cs_desde = ahora;
+  }
+}
+}  // namespace
+
 void RtlEnterCriticalSection_entry(ppc_ptr_t<X_RTL_CRITICAL_SECTION> cs) {
   uint32_t cur_thread = XThread::GetCurrentThread()->guest_object();
   uint32_t spin_count = cs->header.absolute * 256;
@@ -399,7 +459,16 @@ void RtlEnterCriticalSection_entry(ppc_ptr_t<X_RTL_CRITICAL_SECTION> cs) {
 
   if (rex::thread::atomic_inc(&cs->lock_count) != 0) {
     // Create a full waiter.
-    xeKeWaitForSingleObject(reinterpret_cast<void*>(cs.host_address()), 8, 0, 0, nullptr);
+    if (EsHiloServidorAudio()) {
+      const uint32_t dueno = cs->owning_thread;
+      const auto antes = std::chrono::steady_clock::now();
+      xeKeWaitForSingleObject(reinterpret_cast<void*>(cs.host_address()), 8, 0, 0, nullptr);
+      AnotarEsperaCs(dueno, uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(
+                                         std::chrono::steady_clock::now() - antes)
+                                         .count()));
+    } else {
+      xeKeWaitForSingleObject(reinterpret_cast<void*>(cs.host_address()), 8, 0, 0, nullptr);
+    }
   }
 
   assert_true(cs->owning_thread == 0);
