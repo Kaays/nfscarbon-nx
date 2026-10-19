@@ -45,12 +45,13 @@ REXCVAR_DECLARE(bool, audio_diag_prioridad_critica);  // definida en audio_syste
  * a single context, and the data is ready in 14-16 us on average (0.51 ms worst case), far below the
  * 5.3 ms of an audio block. 0 differences from the recompiled code.
  */
-// nfscarbon-nx: 0 on the Switch too. With the worker, about half of the cold starts failed the first
+// nfscarbon-nx: 3 on the Switch. With the worker (1), about half of the cold starts failed the first
 // music decode ("would have to skip N bits"), the game's audio stopped and races never loaded; decoding on
-// the calling thread, eight starts in a row were clean (session 21). Most likely the worker and the game
-// touch the context at the same time.
-#if REX_PLATFORM_SWITCH && 0
-#define REX_XMA_EN_TRABAJADOR_POR_DEFECTO 1
+// the calling thread (0), eight starts in a row were clean (session 21), but in Race Wars that costs the
+// game's audio server ~1.3 ms of every 5.3 ms packet, and it cannot keep up. Mode 3 decodes the first 16
+// frames of each new stream on the calling thread (where the failure was) and the rest on the worker.
+#if REX_PLATFORM_SWITCH
+#define REX_XMA_EN_TRABAJADOR_POR_DEFECTO 3
 #else
 #define REX_XMA_EN_TRABAJADOR_POR_DEFECTO 0
 #endif
@@ -58,7 +59,8 @@ REXCVAR_DEFINE_INT32(audio_xma_en_trabajador, REX_XMA_EN_TRABAJADOR_POR_DEFECTO,
                      "Quien descodifica el XMA al llegar un kick (XMAEnableContext): 0 = el hilo que lo pide, "
                      "como hasta ahora; 1 = el hilo XMA Decoder, que en la Switch va a 0x2B y no lo preempta "
                      "el anillo de la GPU; 2 = el trabajador, y el hilo que pide el kick solo termina los "
-                     "contextos que el trabajador no haya cogido (para el PC, donde no hay esas prioridades)");
+                     "contextos que el trabajador no haya cogido (para el PC, donde no hay esas prioridades); 3 = las 16 "
+                     "primeras tramas de cada sonido en el hilo que lo pide y el resto en el trabajador");
 
 // As with normal Microsoft, there are like twelve different ways to access
 // the audio APIs. Early games use XMA*() methods almost exclusively to touch
@@ -348,8 +350,12 @@ void XmaDecoder::WorkerThreadMain() {
     // without a mark. Only when there were no pending ones, so the 320 locks are not walked after every
     // kick and the fast loop keeps the work being counted.
     if (!habia_pendientes) {
+      const bool hibrido = REXCVAR_GET(audio_xma_en_trabajador) == 3;
       for (uint32_t n = 0; n < kContextCount && worker_running_; n++) {
         XmaContext& context = contexts_[n];
+        if (hibrido && context.InInlinePhase()) {
+          continue;  // a new stream: its first frames belong to the kicking thread
+        }
         bool worked = context.Work();
         if (worked) {
           context.SignalWorkDone();
@@ -516,15 +522,31 @@ void XmaDecoder::WriteRegister(uint32_t addr, uint32_t value) {
     const int32_t modo_trabajador = REXCVAR_GET(audio_xma_en_trabajador);
     const auto kick_antes = std::chrono::steady_clock::now();
     uint64_t kick_contextos = 0;
+    // Mode 3: contexts still in the first frames of a stream are decoded right here and never marked
+    // for the worker, so the two cannot touch the same new stream.
+    uint32_t en_linea = 0;
+    if (modo_trabajador == 3) {
+      uint32_t bits = kicked_value;
+      for (int i = 0; bits && i < 32; ++i, bits >>= 1) {
+        if ((bits & 1) && contexts_[base_context_id + i].TakeInlineDecode()) {
+          en_linea |= 1u << i;
+          TomarPendiente(base_context_id + i);  // drop a stale mark from the previous stream
+        }
+      }
+    }
     if (modo_trabajador != 0) {
-      uint32_t marcados = kicked_value;
+      uint32_t marcados = kicked_value & ~en_linea;
+      bool alguno = false;
       for (int i = 0; marcados && i < 32; ++i, marcados >>= 1) {
         if (marcados & 1) {
           MarcarPendiente(base_context_id + i);
+          alguno = true;
         }
       }
-      g_pendiente_desde_ns.store(AhoraNs(), std::memory_order_release);
-      work_event_->Set();
+      if (alguno) {
+        g_pendiente_desde_ns.store(AhoraNs(), std::memory_order_release);
+        work_event_->Set();
+      }
     }
     for (int i = 0; kicked_value && i < 32; ++i, kicked_value >>= 1) {
       if (kicked_value & 1) {
@@ -532,7 +554,7 @@ void XmaDecoder::WriteRegister(uint32_t addr, uint32_t value) {
         auto& context = contexts_[context_id];
         // Mode 1: the worker does everything. Mode 2: only what the worker has not already taken is
         // finished here, without waiting for it (useful on the PC, where it has priority over nobody).
-        if (modo_trabajador == 1) {
+        if (modo_trabajador == 1 || (modo_trabajador == 3 && !(en_linea & (1u << i)))) {
           continue;
         }
         if (modo_trabajador == 2 && !TomarPendiente(context_id)) {

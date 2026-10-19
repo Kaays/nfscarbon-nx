@@ -236,6 +236,16 @@ class XmaContext {
   }
   void set_is_enabled(bool is_enabled) { is_enabled_.store(is_enabled, std::memory_order_release); }
 
+  // nfscarbon-nx (audio_xma_en_trabajador = 3): the first decodes of each new stream run on the thread
+  // that kicks it, the rest on the XMA worker. Takes one of those inline decodes if any are left.
+  bool TakeInlineDecode() {
+    uint32_t left = inline_decodes_left_.load(std::memory_order_relaxed);
+    while (left && !inline_decodes_left_.compare_exchange_weak(left, left - 1, std::memory_order_relaxed)) {
+    }
+    return left != 0;
+  }
+  bool InInlinePhase() const { return inline_decodes_left_.load(std::memory_order_relaxed) != 0; }
+
   void SignalWorkDone() {
     if (work_completion_event_) {
       work_completion_event_->Set();
@@ -313,6 +323,10 @@ class XmaContext {
   // Loop subframe precision state
   uint8_t loop_frame_output_limit_ = 0;
   bool loop_start_skip_pending_ = false;
+
+  // Decodes left to run on the kicking thread for the current stream (ResetDecoderState refills it).
+  static constexpr uint32_t kInlineDecodesPerStream = 16;
+  std::atomic<uint32_t> inline_decodes_left_{kInlineDecodesPerStream};
 
 };
 

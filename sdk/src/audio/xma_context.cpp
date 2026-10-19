@@ -539,6 +539,7 @@ void XmaContext::ResetDecoderState() {
   current_frame_remaining_subframes_ = 0;
   loop_frame_output_limit_ = 0;
   loop_start_skip_pending_ = false;
+  inline_decodes_left_.store(kInlineDecodesPerStream, std::memory_order_relaxed);
 }
 
 void XmaContext::Disable() {
