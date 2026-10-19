@@ -87,7 +87,13 @@ XmaDecoder::XmaDecoder(runtime::FunctionDispatcher* function_dispatcher)
 
 XmaDecoder::~XmaDecoder() = default;
 
+// FFmpeg errors seen on this thread (read by XmaContext::Decode to dump the context that caused them).
+thread_local uint32_t g_xma_ffmpeg_errors = 0;
+
 void av_log_callback(void* avcl, int level, const char* fmt, va_list va) {
+  if (level <= AV_LOG_ERROR) {
+    ++g_xma_ffmpeg_errors;
+  }
   if (!REXCVAR_GET(ffmpeg_verbose) && level > AV_LOG_WARNING) {
     return;
   }

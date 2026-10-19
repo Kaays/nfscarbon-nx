@@ -20,6 +20,8 @@
 #include <mutex>
 #include <set>
 #include <system_error>
+#include <atomic>
+#include <rex/thread.h>
 #include <thread>
 #include <vector>
 
@@ -274,6 +276,8 @@ void ReiniciarVolcadoXma(uint32_t contexto) {
 }  // namespace
 
 namespace rex::audio {
+
+extern thread_local uint32_t g_xma_ffmpeg_errors;  // xma_decoder.cpp
 
 using stream::BitStream;
 
@@ -1055,7 +1059,31 @@ void XmaContext::Decode(XMA_CONTEXT_DATA* data) {
     return;
   }
   PreparePacket(packet_info.current_frame_size_, padding_start);
+  const uint32_t errors_before = g_xma_ffmpeg_errors;
   const bool decoded = DecodePacket(av_context_, av_packet_, av_frame_);
+  if (g_xma_ffmpeg_errors != errors_before) {
+    // nfscarbon-nx: the first music decode after boot sometimes fails ("would have to skip N bits") and
+    // then the game's audio stops and races never load. Dump what was decoded, to find out why.
+    static std::atomic<uint32_t> dumps{0};
+    if (dumps.fetch_add(1, std::memory_order_relaxed) < 20) {
+      REXAPU_ERROR("XmaContext {}: FFmpeg error on this frame (decoded {}): rate {} stereo {} | read offset {} bits, "
+                   "packet {} of {} (header {:02X}{:02X}{:02X}{:02X}), frame size {} bits, padding {} | input 0: "
+                   "{:08X} x{} valid {} | input 1: {:08X} x{} valid {} | current {} | output {:08X} x{} write {} "
+                   "read {} | loop count {} start {} end {} | thread {}",
+                   id(), decoded, uint32_t(data->sample_rate), uint32_t(data->is_stereo),
+                   uint32_t(data->input_buffer_read_offset), packet_index, current_input_packet_count,
+                   packet[0], packet[1], packet[2], packet[3], packet_info.current_frame_size_, padding_start,
+                   uint32_t(data->input_buffer_0_ptr), uint32_t(data->input_buffer_0_packet_count),
+                   uint32_t(data->input_buffer_0_valid), uint32_t(data->input_buffer_1_ptr),
+                   uint32_t(data->input_buffer_1_packet_count), uint32_t(data->input_buffer_1_valid),
+                   uint32_t(data->current_buffer), uint32_t(data->output_buffer_ptr),
+                   uint32_t(data->output_buffer_block_count), uint32_t(data->output_buffer_write_offset),
+                   uint32_t(data->output_buffer_read_offset), uint32_t(data->loop_count),
+                   uint32_t(data->loop_start), uint32_t(data->loop_end),
+                   rex::thread::Thread::GetCurrentThread() ? rex::thread::Thread::GetCurrentThread()->name()
+                                                           : std::string("?"));
+    }
+  }
   if (decoded) {
     ConvertFrame(reinterpret_cast<const uint8_t**>(&av_frame_->data), bool(data->is_stereo),
                  raw_frame_.data());
