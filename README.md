@@ -109,6 +109,20 @@ Notes:
 - **Step 6** with `4` parallel jobs. More jobs need more RAM. The unstripped executable `app/out/switch/nfscarbon`
   is kept for `tools/symbolize_profile.py`.
 
+### Faster build with PGO (recommended)
+
+A profile-guided build is about 25 % faster in the heaviest scenes (Race Wars: 20.7 → 25.8 fps). The profile is
+not in the repository (it is only valid for the exact sources it was taken from), so each builder makes their own:
+
+1. `PGO=generate bash tools/build.sh ~/nfscarbon-nx/out/mesa-sdk 4` builds an instrumented NRO (slower).
+2. Play it on the Switch for 15-30 minutes, including a busy race (Race Wars). The profile is written every
+   3 minutes to `sdmc:/switch/nfscarbon-nx/pgo/`.
+3. Copy that `pgo/` folder from the SD card to the repository root (`~/nfscarbon-nx/pgo/*.gcda`).
+4. `PGO=use bash tools/build.sh ~/nfscarbon-nx/out/mesa-sdk 4` builds the final NRO with the profile.
+
+Later builds keep the PGO mode of the build folder; `PGO=off` goes back to a plain build. After larger source
+changes, take a new profile.
+
 ## Settings
 
 `nfscarbon.toml` describes each setting. The main ones:
