@@ -32,7 +32,7 @@ Tested on a Switch Lite (handheld, 1280x720), USA disc version, all settings as 
 | Clocks (CPU / GPU / RAM, MHz) | Menus | Canyon race | Race Wars (crowded) | Sound in Race Wars |
 |---|---|---|---|---|
 | **1020 / 460 / 1331 (stock)** | ~25 FPS | 16-19 FPS | 13-18 FPS | breaks up |
-| 1683 / 844 / 2133 | 30 FPS | 25-30 FPS | 25-30 FPS | fine |
+| 1683 / 844 / 2133 | 30 FPS | 28-30 FPS | 19-24 FPS for the first 20-40 s, then 26-30 FPS | some popping at the start, then fine |
 | 1785 / 921 / 2133 | 30 FPS | 30 FPS in most places | 30 FPS in most places | fine |
 | 1963 / 1152 / 2133 (max) | 30 FPS | steady 30 FPS | steady 30 FPS | fine |
 
@@ -46,9 +46,11 @@ thread, audio mixer) fill the rest. There is no single big bug left: it is many 
 ### Known issues
 
 - **Slow frame rate at stock clocks**, above all in crowded races (Race Wars).
-- **Sound breaks up in crowded races at stock clocks** ("slow motion", popping). The game's mixer keeps only two
-  5 ms blocks ahead, so any delay on a saturated CPU loses a block. Fine with an overclock.
+- **Sound breaks up in crowded races** ("slow motion", popping). The game's mixer keeps only two 5 ms blocks
+  ahead, so any delay on a saturated CPU loses a block. At 1683 MHz only the first 20-40 s of Race Wars, while the
+  whole pack is on screen; fine from 1785 MHz.
 - **Intro videos (EA logo, attract) play slowly at stock clocks**, normal with an overclock.
+- **A random one-frame white flash** (a stray giant polygon), now and then.
 - **A second car shadow**: a dark patch beside and behind the player's car, as if an invisible car were next to it.
 - **A short freeze when the player takes control** at the start of a race.
 - **The first race stutters** while it compiles graphics pipelines. They are saved on the SD card
