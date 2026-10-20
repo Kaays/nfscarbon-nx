@@ -16,9 +16,10 @@ carbon_gpu_fps_cap = 30
 # Render resolution in percent of the game's 1280x720 (handheld: 100).
 carbon_gpu_render_scale = 100
 
-# Car reflection cube faces redrawn per frame (6 = all) and rear-view mirror at
-# half rate: the cheapest quality cuts the renderer offers.
-carbon_gpu_reflection_faces = 2
+# Car reflection cube faces redrawn per frame (6 = all, 0 = none) and rear-view
+# mirror at half rate. The game overwrites the faces before it ever samples them
+# (99.97 % in Race Wars), so 0 costs nothing visible and saves 170-360 draws per frame.
+carbon_gpu_reflection_faces = 0
 carbon_gpu_mirror_half_rate = true
 
 # The 3-second command processor log line costs SD card writes.
