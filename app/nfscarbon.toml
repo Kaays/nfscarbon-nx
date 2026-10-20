@@ -19,7 +19,7 @@ carbon_gpu_render_scale = 100
 # Car reflection cube faces redrawn per frame (6 = all, 0 = none) and rear-view
 # mirror at half rate. 0 saves 170-360 draws per frame; the car paint then reflects
 # a little less (the game samples the cube now and then). 1 = a full cube every 6 frames.
-carbon_gpu_reflection_faces = 0
+carbon_gpu_reflection_faces = 1
 
 # Scene detail (1.0 = the game's own). Below 1, small far objects drop out and lower
 # LODs start sooner, so crowded scenes (Race Wars start) draw less. Try 0.8 or 0.7.

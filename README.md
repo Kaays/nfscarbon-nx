@@ -127,7 +127,7 @@ changes, take a new profile.
 |---|---|---|
 | `carbon_gpu_fps_cap` | `30` | frame rate cap (the game itself runs at 30) |
 | `carbon_gpu_render_scale` | `100` | resolution in % of 1280x720. `50` makes the menus GPU-light |
-| `carbon_gpu_reflection_faces` | `0` | car reflection cube faces redrawn per frame (6 = all). 0 is fastest, with slightly weaker reflections on the cars; 1 brings them back |
+| `carbon_gpu_reflection_faces` | `1` | car reflection cube faces redrawn per frame (6 = all, a full cube every 6 frames at 1). 0 is a little faster, with weaker reflections on the cars |
 | `nfscarbon_lod_bias` | `1.0` | scene detail: below 1 (e.g. 0.8) small far objects drop out and lower LODs start sooner, fewer draws in crowded scenes |
 | `nfscarbon_car_lod_bias` | `1.0` | car detail: below 1 (e.g. 0.6) the other cars switch to their simpler models sooner, fewer draws at crowded race starts |
 | `carbon_gpu_mirror_half_rate` | `true` | rear-view mirror at half rate |
