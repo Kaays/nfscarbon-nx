@@ -27,7 +27,9 @@
 //
 // nfscarbon_audio_native = false puts the recompiled code back without a new NRO.
 
+#include <chrono>
 #include <cmath>
+#include <string>
 #include <cstdint>
 #include <cstring>
 
@@ -352,6 +354,71 @@ bool TryUnpackMode1(Ctx& ctx, uint8_t* base) {
 
 #ifndef NFSCARBON_AUDIO_NATIVE_TEST
 
+// ---- Measurement: where the mixer's time goes (session 23) ---------------------------------------
+// Before trying to make the game mix in stereo instead of 5.1, measure how much of the audio server
+// is per-output-channel work: sub_826C4BE8 mixes a bus into its output channels (gain sums, one per
+// source/destination channel pair, or ramped ones while a volume changes). Every 10 s one line:
+// time in the bus mix, in all gain sums and ramps (any caller), and how many output/input channels
+// the buses have. Two counter reads per call; nfscarbon_audio_mix_stats = false turns it off.
+REXCVAR_DEFINE_BOOL(nfscarbon_audio_mix_stats, true, "Carbon",
+                    "Log every 10 s how much of the audio server goes into per-channel mixing");
+
+namespace nfscarbon::audio_native::stats {
+inline uint64_t Ticks() {
+#if defined(__aarch64__)
+  uint64_t t;
+  asm volatile("mrs %0, cntpct_el0" : "=r"(t));
+  return t;
+#else
+  return uint64_t(std::chrono::steady_clock::now().time_since_epoch().count()) * 192 / 10000;
+#endif
+}
+struct Counter {
+  uint64_t calls = 0, ticks = 0;
+};
+Counter g_bus, g_gain, g_ramp;
+uint32_t g_channels[8][8] = {};  // [output][input] of the buses mixed
+uint64_t g_last = 0;
+
+void MaybeReport() {
+  const uint64_t now = Ticks();
+  if (!g_last) {
+    g_last = now;
+    return;
+  }
+  if (now - g_last < 10ull * 19200000ull) return;
+  const double secs = double(now - g_last) / 19200000.0;
+  auto ms = [](const Counter& c) { return double(c.ticks) / 19200.0; };
+  std::string ch;
+  for (int o = 0; o < 8; ++o)
+    for (int i = 0; i < 8; ++i)
+      if (g_channels[o][i]) ch += fmt::format(" {}<-{}:{}", o, i, g_channels[o][i]);
+  REXLOG_INFO("[audio] mix in {:.1f} s: bus mix {} calls {:.0f} ms ({:.1f} % of a core) | gain sums {} "
+              "calls {:.0f} ms | ramps {} calls {:.0f} ms | bus channels out<-in:calls{}",
+              secs, g_bus.calls, ms(g_bus), ms(g_bus) / (secs * 10.0), g_gain.calls, ms(g_gain),
+              g_ramp.calls, ms(g_ramp), ch);
+  g_bus = g_gain = g_ramp = {};
+  std::memset(g_channels, 0, sizeof(g_channels));
+  g_last = now;
+}
+}  // namespace nfscarbon::audio_native::stats
+
+extern "C" void __imp__sub_826C4BE8(PPCContext& __restrict ctx, uint8_t* base);
+extern "C" REX_FUNC(sub_826C4BE8) {
+  using namespace nfscarbon::audio_native::stats;
+  if (!REXCVAR_GET(nfscarbon_audio_mix_stats)) {
+    __imp__sub_826C4BE8(ctx, base);
+    return;
+  }
+  const uint8_t out = base[ctx.r3.u32 + 32], in = base[ctx.r3.u32 + 64];
+  ++g_channels[out & 7][in & 7];
+  const uint64_t t0 = Ticks();
+  __imp__sub_826C4BE8(ctx, base);
+  g_bus.ticks += Ticks() - t0;
+  ++g_bus.calls;
+  MaybeReport();
+}
+
 extern "C" void __imp__sub_826CD8D0(PPCContext& __restrict ctx, uint8_t* base);
 extern "C" void __imp__sub_826C8BB0(PPCContext& __restrict ctx, uint8_t* base);
 extern "C" void __imp__sub_826D15D0(PPCContext& __restrict ctx, uint8_t* base);
@@ -390,7 +457,13 @@ extern "C" REX_FUNC(sub_826CD8D0) {
   } else {
     ctx.fpscr.disableFlushMode();
   }
+  const bool measure = REXCVAR_GET(nfscarbon_audio_mix_stats);
+  const uint64_t t0 = measure ? nfscarbon::audio_native::stats::Ticks() : 0;
   nfscarbon::audio_native::GainSum(base, dst, src, count, gain);
+  if (measure) {
+    nfscarbon::audio_native::stats::g_gain.ticks += nfscarbon::audio_native::stats::Ticks() - t0;
+    ++nfscarbon::audio_native::stats::g_gain.calls;
+  }
 }
 
 extern "C" REX_FUNC(sub_826C8BB0) {
@@ -411,7 +484,13 @@ extern "C" REX_FUNC(sub_826D1FC0) {
     __imp__sub_826D1FC0(ctx, base);
     return;
   }
+  const bool measure = REXCVAR_GET(nfscarbon_audio_mix_stats);
+  const uint64_t t0 = measure ? nfscarbon::audio_native::stats::Ticks() : 0;
   nfscarbon::audio_native::RampSumCall(ctx, base);
+  if (measure) {
+    nfscarbon::audio_native::stats::g_ramp.ticks += nfscarbon::audio_native::stats::Ticks() - t0;
+    ++nfscarbon::audio_native::stats::g_ramp.calls;
+  }
 }
 
 extern "C" void __imp__sub_826B56A8(PPCContext& __restrict ctx, uint8_t* base);
