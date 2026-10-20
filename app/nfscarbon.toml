@@ -24,6 +24,9 @@ carbon_gpu_reflection_faces = 0
 # Scene detail (1.0 = the game's own). Below 1, small far objects drop out and lower
 # LODs start sooner, so crowded scenes (Race Wars start) draw less. Try 0.8 or 0.7.
 nfscarbon_lod_bias = 1.0
+# Car detail (1.0 = the game's own). Below 1, the other cars switch to their simpler
+# models sooner: fewer draws at crowded race starts. Try 0.6.
+nfscarbon_car_lod_bias = 1.0
 carbon_gpu_mirror_half_rate = true
 
 # The 3-second command processor log line costs SD card writes.

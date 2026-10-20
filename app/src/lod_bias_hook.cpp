@@ -37,3 +37,37 @@ extern "C" REX_FUNC(sub_82586288) {
     ctx.r3.u64 = uint32_t(int32_t(double(ctx.r3.s32) * bias));
   }
 }
+
+// ---- Car detail (nfscarbon-nx) -------------------------------------------------------------------
+// The car renderer (sub_825A43A8, CarRenderInfo::Render) asks sub_822C9AE0 for the car's projected
+// size in pixels (the same focal * radius / (distance - radius) as above), then picks the car's model
+// LOD by counting the thresholds the size is below (80/40/20/10 px, or 120/25/20/10 for some cars),
+// starting at the car's minimum LOD (+12492) and clamped to its maximum (+12496). At the start of Race
+// Wars twenty-odd cars stand next to each other at full detail: 3500-5700 draws per frame. Scaling the
+// size by nfscarbon_car_lod_bias < 1 for those two calls only (return addresses 0x825A442C and
+// 0x825A4454) makes the other cars switch to their simpler models sooner; the player's car, right in
+// front of the camera, stays far above the 80-120 px of the top level. Very far cars, under the
+// renderer's own minimum size, also drop out a little sooner.
+
+REXCVAR_DEFINE_DOUBLE(nfscarbon_car_lod_bias, 1.0, "Carbon",
+                      "Scale of the projected car size the car renderer's LOD choice sees (1.0 = game "
+                      "default; 0.6 = other cars switch to simpler models sooner, fewer draws)")
+    .range(0.3, 1.0);
+
+extern "C" void __imp__sub_822C9AE0(PPCContext& __restrict ctx, uint8_t* base);
+
+extern "C" REX_FUNC(sub_822C9AE0) {
+  const uint64_t ret = ctx.lr;
+  __imp__sub_822C9AE0(ctx, base);
+  if (ret != 0x825A442C && ret != 0x825A4454) {
+    return;
+  }
+  const double bias = REXCVAR_GET(nfscarbon_car_lod_bias);
+  static std::atomic<bool> logged{false};
+  if (!logged.exchange(true, std::memory_order_relaxed)) {
+    REXLOG_INFO("[lod] car detail test active, nfscarbon_car_lod_bias = {:.2f}", bias);
+  }
+  if (bias < 1.0) {
+    ctx.r3.u64 = uint32_t(int32_t(double(ctx.r3.s32) * bias));
+  }
+}
