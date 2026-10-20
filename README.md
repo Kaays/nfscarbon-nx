@@ -128,6 +128,7 @@ changes, take a new profile.
 | `carbon_gpu_fps_cap` | `30` | frame rate cap (the game itself runs at 30) |
 | `carbon_gpu_render_scale` | `100` | resolution in % of 1280x720. `50` makes the menus GPU-light |
 | `carbon_gpu_reflection_faces` | `0` | car reflection cube faces redrawn per frame (6 = all). The game never samples them, so 0 |
+| `nfscarbon_lod_bias` | `1.0` | scene detail: below 1 (e.g. 0.8) small far objects drop out and lower LODs start sooner, fewer draws in crowded scenes |
 | `carbon_gpu_mirror_half_rate` | `true` | rear-view mirror at half rate |
 | `nfscarbon_audio_mixer_priority` | `0x2A` (42) | Horizon priority of the game's audio mixer thread (0 = untouched) |
 | `nfscarbon_handoff_sleep` | `true` | the game's two render threads sleep instead of spinning on `Sleep(0)` |
@@ -200,7 +201,7 @@ This port only exists because of the work of these people and projects:
   Its SDK layer, NVK patch, toolchain and documentation are the reference this port follows, and several fixes
   (frame handoff, code generator options) are ports of its solutions.
 - **[zofo007 — NFS-Carbon-NX](https://github.com/zofo007/NFS-Carbon-NX)**: another Switch port of Carbon; its
-  finding that the car reflection cube faces are never sampled is used here.
+  finding that the car reflection cube faces are never sampled and its scene detail (LOD) hook are used here.
 - **[madelrandel-blip — NFSMW Recompiled](https://github.com/madelrandel-blip/NFSMW-Recompiled)**: the project
   nfsmw-nx started from.
 - **[Tom Clay — ReXGlue SDK](https://github.com/rexglue/rexglue-sdk)**, built on the work of the

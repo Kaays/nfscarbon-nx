@@ -37,6 +37,8 @@ set(NFSCARBON_SOURCES
     src/audio_server_hook.cpp
     # Native versions of the audio server's hottest loops (gain sum, filter, resampler).
     src/audio_native.cpp
+    # Optional scene detail trim: scales the projected object size the game's LOD test sees.
+    src/lod_bias_hook.cpp
     # PGO: profile dump of the instrumented build (empty unless NFSCARBON_PGO=generate).
     src/nfscarbon_pgo.cpp
 )
