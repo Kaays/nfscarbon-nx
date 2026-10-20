@@ -58,6 +58,7 @@ extern "C" void __imp__sub_822C9AE0(PPCContext& __restrict ctx, uint8_t* base);
 
 extern "C" REX_FUNC(sub_822C9AE0) {
   const uint64_t ret = ctx.lr;
+  const uint32_t view = ctx.r3.u32;
   __imp__sub_822C9AE0(ctx, base);
   if (ret != 0x825A442C && ret != 0x825A4454) {
     return;
@@ -68,6 +69,32 @@ extern "C" REX_FUNC(sub_822C9AE0) {
     REXLOG_INFO("[lod] car detail test active, nfscarbon_car_lod_bias = {:.2f}", bias);
   }
   if (bias < 1.0) {
-    ctx.r3.u64 = uint32_t(int32_t(double(ctx.r3.s32) * bias));
+    const int32_t size = ctx.r3.s32;
+    int32_t scaled = int32_t(double(size) * bias);
+    // The renderer skips a car whose size is under the view's minimum (+44) + 10 (sub_825A43A8:
+    // cmpw r25,r10 after addi r10,r10,10). Only the LOD choice should change: a car that was big
+    // enough to be drawn stays big enough (the first test showed far cars as lone tail lights).
+    const int32_t min_size = int32_t(REX_LOAD_U32(view + 44)) + 10;
+    if (size >= min_size && scaled < min_size) {
+      scaled = min_size;
+    }
+    ctx.r3.u64 = uint32_t(scaled);
   }
+}
+
+// ---- Diagnostic: draw no cars -----------------------------------------------------------------
+// nfscarbon_debug_hide_cars = true skips the car renderer (sub_825A43A8) entirely, to measure how many
+// of the draws of a crowded race start are cars. Not for playing.
+REXCVAR_DEFINE_BOOL(nfscarbon_debug_hide_cars, false, "Carbon",
+                    "Diagnostic: do not draw cars (measures their share of the draws)")
+    .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+
+extern "C" void __imp__sub_825A43A8(PPCContext& __restrict ctx, uint8_t* base);
+
+extern "C" REX_FUNC(sub_825A43A8) {
+  if (REXCVAR_GET(nfscarbon_debug_hide_cars)) {
+    ctx.r3.u64 = 0;
+    return;
+  }
+  __imp__sub_825A43A8(ctx, base);
 }
