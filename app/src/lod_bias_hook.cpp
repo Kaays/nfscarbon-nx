@@ -78,6 +78,13 @@ extern "C" REX_FUNC(sub_822C9AE0) {
     if (size >= min_size && scaled < min_size) {
       scaled = min_size;
     }
+    // The two lowest car LODs (under 20 px) are little more than the lights: with 0.6 cars 30-35 px
+    // away went straight to them and showed as floating tail lights (console test, session 23).
+    // Only the upper levels are traded: a car the game would draw at 20 px or more stays at 20 or more.
+    constexpr int32_t kKeepAbove = 20;
+    if (size >= kKeepAbove && scaled < kKeepAbove) {
+      scaled = kKeepAbove;
+    }
     ctx.r3.u64 = uint32_t(scaled);
   }
 }
