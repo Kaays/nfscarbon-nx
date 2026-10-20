@@ -200,8 +200,6 @@ This port only exists because of the work of these people and projects:
 - **[StevensND — nfsmw-nx](https://github.com/StevensND/nfsmw-nx)**: the Switch port of Need for Speed: Most Wanted.
   Its SDK layer, NVK patch, toolchain and documentation are the reference this port follows, and several fixes
   (frame handoff, code generator options) are ports of its solutions.
-- **[zofo007 — NFS-Carbon-NX](https://github.com/zofo007/NFS-Carbon-NX)**: another Switch port of Carbon; its
-  finding that the car reflection cube faces are never sampled and its scene detail (LOD) hook are used here.
 - **[madelrandel-blip — NFSMW Recompiled](https://github.com/madelrandel-blip/NFSMW-Recompiled)**: the project
   nfsmw-nx started from.
 - **[Tom Clay — ReXGlue SDK](https://github.com/rexglue/rexglue-sdk)**, built on the work of the
