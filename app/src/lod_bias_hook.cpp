@@ -10,9 +10,11 @@
 // Race Wars: 3500-5700 draws per frame) submits fewer draws, which saves CPU in the game's render
 // thread and in the renderer alike. 1.0 = the game's own choice. sub_82586288 has a single caller.
 
+#include <atomic>
 #include <cstdint>
 
 #include <rex/cvar.h>
+#include <rex/logging.h>
 
 #include "../generated/default/nfscarbon_pch.h"
 
@@ -27,6 +29,10 @@ extern "C" void __imp__sub_82586288(PPCContext& __restrict ctx, uint8_t* base);
 extern "C" REX_FUNC(sub_82586288) {
   __imp__sub_82586288(ctx, base);
   const double bias = REXCVAR_GET(nfscarbon_lod_bias);
+  static std::atomic<bool> logged{false};
+  if (!logged.exchange(true, std::memory_order_relaxed)) {
+    REXLOG_INFO("[lod] scene detail test active, nfscarbon_lod_bias = {:.2f}", bias);
+  }
   if (bias < 1.0) {
     ctx.r3.u64 = uint32_t(int32_t(double(ctx.r3.s32) * bias));
   }
