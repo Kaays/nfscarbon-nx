@@ -106,6 +106,16 @@ if(REXGLUE_PLATFORM_SWITCH)
     elseif(NOT NFSCARBON_PGO STREQUAL "")
         message(FATAL_ERROR "NFSCARBON_PGO must be empty, generate or use (it is '${NFSCARBON_PGO}')")
     endif()
+    # nfscarbon_register.cpp is one function of ~72,800 SetFunction calls that runs once at startup.
+    # At -O3 it took GCC over 80 minutes in an instrumented (PGO=generate) build; -O1 and no arc
+    # counters make it a matter of seconds, and nothing at run time depends on how fast it is.
+    set(NFSCARBON_REGISTER_SRC "${CMAKE_CURRENT_SOURCE_DIR}/generated/default/nfscarbon_register.cpp")
+    if(EXISTS "${NFSCARBON_REGISTER_SRC}")
+        set_property(SOURCE "${NFSCARBON_REGISTER_SRC}" APPEND PROPERTY COMPILE_OPTIONS -O1)
+        if(NFSCARBON_PGO STREQUAL "generate")
+            set_property(SOURCE "${NFSCARBON_REGISTER_SRC}" APPEND PROPERTY COMPILE_OPTIONS -fno-profile-arcs)
+        endif()
+    endif()
     if(NFSCARBON_PGO_OPTIONS)
         foreach(target nfscarbon_recomp nfscarbon rexgpu-carbon)
             if(TARGET ${target})
