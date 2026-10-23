@@ -43,13 +43,13 @@ REXCVAR_DEFINE_INT32(carbon_gpu_trace_frame, 0, "CarbonGPU",
 REXCVAR_DEFINE_INT32(carbon_gpu_dump_frame_interval, 0, "CarbonGPU",
                      "Save the presented guest frame as carbon_frames/frame_<n>.bmp every N frames "
                      "(0 = off)");
-REXCVAR_DEFINE_INT32(carbon_gpu_vertex_arena_mb, 128, "CarbonGPU",
+REXCVAR_DEFINE_INT32(carbon_gpu_vertex_arena_mb, 256, "CarbonGPU",
                      "Size of the persistent vertex buffer cache (0 = upload vertices every frame)")
     .range(0, 1024);
 REXCVAR_DEFINE_INT32(carbon_gpu_vertex_arena_check_interval, 4, "CarbonGPU",
                      "Frames an unchanged cached vertex page may go between checks (1 = every frame)")
     .range(1, 8);
-REXCVAR_DEFINE_BOOL(carbon_gpu_skip_redundant_resolves, true, "CarbonGPU",
+REXCVAR_DEFINE_BOOL(carbon_gpu_skip_redundant_resolves, false, "CarbonGPU",
                     "Skip resolves whose source contents, rectangle and parameters match the "
                     "previous resolve into the same destination region (false = always copy)");
 REXCVAR_DEFINE_BOOL(carbon_gpu_vertex_ranges, true, "CarbonGPU",

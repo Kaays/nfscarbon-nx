@@ -240,3 +240,17 @@ game's frame preparation thread is at 85-87 % of a core there and is now the lim
 Mixer measurement: mixing the buses into their output channels costs at most 3.6-4.1 % of a core (start of
 Race Wars, 180,000-200,000 bus mixes and 620,000-690,000 gain sums per 10 s). Mixing in stereo instead of 5.1
 would save half of that at most, so it is not worth doing; the mixer's time is in the per-voice work.
+
+## Session 24 (2026-10-23), renderer shortcuts off, vertex cache
+
+Four cores, 1683 / 844 / 2133. With `carbon_gpu_mirror_half_rate = false`, `carbon_gpu_reflection_faces = 6` and
+`carbon_gpu_skip_redundant_resolves = false` (fixes the choppy boss picture-in-picture box and the people missing
+behind the car windows in in-car cutscenes): Race Wars start 25-27 fps after a 5 s load window at 18 fps, then
+28-30; CPU 280-296 % of 400; one window with 6 missing audio blocks in the whole session. Same as with the
+shortcuts on, within noise.
+
+The 128 MiB vertex arena filled up and started over three times in that session, all in crowded races (one at a
+Race Wars start, one around lap 2 of the last Race Wars, where the white flashes were frequent). At 256 MiB it
+never filled (peak 227 MiB) and the flashes dropped to one per race, same frame rate. With the arena off (0) the
+flash still happened twice and the trailing shadow was unchanged, at 27.1 fps average in crowded windows (27.9
+with it on): the arena is neither the flash nor the shadow. 256 MiB is now the default.

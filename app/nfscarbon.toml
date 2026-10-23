@@ -16,15 +16,24 @@ carbon_gpu_fps_cap = 30
 # Render resolution in percent of the game's 1280x720 (handheld: 100).
 carbon_gpu_render_scale = 100
 
-# Car reflection cube faces redrawn per frame (6 = all, 0 = none) and rear-view
-# mirror at half rate. 0 saves 170-360 draws per frame; the car paint then reflects
-# a little less (the game samples the cube now and then). 1 = a full cube every 6 frames.
-carbon_gpu_reflection_faces = 1
+# Car reflection cube faces redrawn per frame (6 = all, 0 = none). Below 6 saves
+# draws, but the car windows show a stale reflection: in in-car cutscenes (boss
+# confrontations, Neville's garage) the people behind the glass disappear.
+carbon_gpu_reflection_faces = 6
+
+# Rear-view mirror and the boss picture-in-picture box at half rate (choppy box).
+carbon_gpu_mirror_half_rate = false
+
+# Skip a resolve when it would copy the same contents again (false = always copy).
+carbon_gpu_skip_redundant_resolves = false
+
+# Persistent vertex buffer cache. 256 MiB is not filled in Race Wars (peak ~230);
+# at 128 it filled up and started over in crowded races.
+carbon_gpu_vertex_arena_mb = 256
 
 # Scene detail (1.0 = the game's own). Below 1, small far objects drop out and lower
 # LODs start sooner, so crowded scenes (Race Wars start) draw less. Try 0.8 or 0.7.
 nfscarbon_lod_bias = 1.0
-carbon_gpu_mirror_half_rate = true
 
 # The 3-second command processor log line costs SD card writes.
 carbon_gpu_watchdog = false

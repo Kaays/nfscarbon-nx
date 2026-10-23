@@ -13,39 +13,34 @@ It is not an emulator. The PowerPC code of the game's `default.xex` is staticall
 native Vulkan renderer running on NVK (Mesa).
 
 > [!IMPORTANT]
-> **Work in progress.** The game boots, the menus work and races are playable. At **1683 MHz** (CPU) it holds
-> 28-30 FPS in normal races and police chases; only the first 20-40 s of Race Wars, with the whole pack on screen,
-> drop to 19-24 FPS with some popping in the sound. From 1785 MHz it holds 30 FPS in most places. At the stock
-> 1020 MHz it runs at 13-25 FPS. Latest version: see [Releases](../../releases). Help is welcome: see
-> [How to help](#how-to-help).
+> **Playable, with an overclock.** The game boots, the menus, career, cutscenes and races all work, with sound and
+> videos. It **needs an overclock**: at the Switch's stock clocks it does not run well. On the overclock we play
+> with (CPU 1683 / GPU 844 / RAM 2133 MHz) and the fourth CPU core enabled, it holds 28-30 FPS in races and only
+> dips to 24-27 FPS for a few seconds at the start of Race Wars, with clean sound. Latest version: see
+> [Releases](../../releases).
 
 ## Where it stands
 
-Tested on a Switch Lite (handheld, 1280x720), USA disc version, all settings as shipped in `nfscarbon.toml`.
+Tested on a Switch Lite (handheld, 1280x720), USA disc version, all settings as shipped in `nfscarbon.toml`, at
+**CPU 1683 / GPU 844 / RAM 2133 MHz**. The game is locked to 30 FPS by design, as on the Xbox 360.
 
-| Clocks (CPU / GPU / RAM, MHz) | Menus | Canyon race | Race Wars (crowded) | Sound in Race Wars |
-|---|---|---|---|---|
-| **1020 / 460 / 1331 (stock)** | ~25 FPS | 16-19 FPS | 13-18 FPS | breaks up |
-| 1683 / 844 / 2133 | 30 FPS | 28-30 FPS | 19-24 FPS for the first 20-40 s, then 26-30 FPS | some popping at the start, then fine |
-| 1785 / 921 / 2133 | 30 FPS | 30 FPS in most places | 30 FPS in most places | fine |
-| 1963 / 1152 / 2133 (max) | 30 FPS | steady 30 FPS | steady 30 FPS | fine |
+| | With the fourth core ([how](#experimental-the-fourth-cpu-core)) | Three cores (normal launch) |
+|---|---|---|
+| Menus, free roam, cutscenes | 30 FPS | 30 FPS |
+| Normal races, canyon duels, police chases | 28-30 FPS | 28-30 FPS |
+| Race Wars, first seconds (whole pack on screen) | 24-27 FPS, then 28-30 | 19-24 FPS for 20-40 s, then 26-30 |
+| Sound | clean, also at Race Wars starts | some popping at Race Wars starts |
+| Cutscene videos, boss face videos | normal speed | normal speed |
 
-The game is locked to 30 FPS by design, as on the Xbox 360.
-
-Where the time goes at stock clocks (Race Wars, measured on the console; details in
-[docs/measurements.md](docs/measurements.md)): the three CPU cores are 270-290 % busy out of 300 %. The renderer
-thread needs 45-50 ms per frame, the GPU 35-44 ms (budget: 33 ms). The game's own threads (frame preparation, main
-thread, audio mixer) fill the rest. There is no single big bug left: it is many medium-sized costs.
+**Stock clocks are not supported**: the game is CPU-bound and the three 1020 MHz cores cannot keep up (low frame
+rate, broken-up sound). Use an overclock (sys-clk or similar).
 
 ### Known issues
 
-- **Slow frame rate at stock clocks**, above all in crowded races (Race Wars).
-- **Sound breaks up in crowded races** ("slow motion", popping). The game's mixer keeps only two 5 ms blocks
-  ahead, so any delay on a saturated CPU loses a block. At 1683 MHz only the first 20-40 s of Race Wars, while the
-  whole pack is on screen; fine from 1785 MHz.
-- **Intro videos (EA logo, attract) play slowly at stock clocks**, normal with an overclock.
-- **A random one-frame white flash** (a stray giant polygon), now and then.
-- **A second car shadow**: a dark patch beside and behind the player's car, as if an invisible car were next to it.
+- **The car's shadow slides behind the car** at speed (it sits under the car when slow). Most visible in Race Wars.
+  Not the vertex cache, not the resolve or reflection shortcuts; cause not found yet.
+- **A rare one-frame white flash** (a stray giant polygon), now and then in long races. Once in a while, at a race
+  start, a few frames go **black** instead.
 - **A short freeze when the player takes control** at the start of a race.
 - **The first race stutters** while it compiles graphics pipelines. They are saved on the SD card
   (`cache/carbon_gpu`), and later sessions start smoothly.
@@ -149,9 +144,10 @@ Core 3 is shared with the system (HOME menu, overlays, background services): not
 |---|---|---|
 | `carbon_gpu_fps_cap` | `30` | frame rate cap (the game itself runs at 30) |
 | `carbon_gpu_render_scale` | `100` | resolution in % of 1280x720. `50` makes the menus GPU-light |
-| `carbon_gpu_reflection_faces` | `1` | car reflection cube faces redrawn per frame (6 = all, a full cube every 6 frames at 1). 0 is a little faster, with weaker reflections on the cars |
+| `carbon_gpu_reflection_faces` | `6` | car reflection cube faces redrawn per frame (6 = all). Lower is a little faster, but car windows show a stale reflection and people in in-car cutscenes disappear |
 | `nfscarbon_lod_bias` | `1.0` | scene detail: below 1 (e.g. 0.8) small far objects drop out and lower LODs start sooner, fewer draws in crowded scenes |
-| `carbon_gpu_mirror_half_rate` | `true` | rear-view mirror at half rate |
+| `carbon_gpu_mirror_half_rate` | `false` | rear-view mirror at half rate (also makes the boss picture-in-picture box choppy) |
+| `carbon_gpu_vertex_arena_mb` | `256` | vertex buffer cache; at 128 it filled up and started over in Race Wars |
 | `nfscarbon_audio_mixer_priority` | `0x2A` (42) | Horizon priority of the game's audio mixer thread (0 = untouched) |
 | `nfscarbon_handoff_sleep` | `true` | the game's two render threads sleep instead of spinning on `Sleep(0)` |
 | `nfscarbon_renderer` | `carbon` | `carbon` native renderer, `xenos` the SDK's GPU emulation (slow, to compare) |
@@ -185,12 +181,12 @@ Core 3 is shared with the system (HOME menu, overlays, background services): not
 ## How to help
 
 The port is split into independent pieces in **[docs/roadmap.md](docs/roadmap.md)**: what each one is, what has
-been measured so far, and where to start. Most of them are about the frame rate at stock clocks: the renderer's
-per-draw CPU cost, the GPU passes, the audio mixer and the game threads.
+been measured so far, and where to start. Most of them are about CPU time, which would lower the overclock
+needed: the renderer's per-draw CPU cost, the GPU passes, the audio mixer and the game threads.
 
 When something goes wrong, please [open an issue](../../issues/new/choose) with:
 
-- the clocks you used (stock or overclock, and which values);
+- the clocks you used (CPU / GPU / RAM) and whether the fourth core was enabled;
 - `sdmc:/switch/nfscarbon-nx/logs/nfscarbon_*.log` and `logs/rex/rex_perfil.log`;
 - for a crash, the Atmosphère report from `sdmc:/atmosphere/crash_reports/`.
 
