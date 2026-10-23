@@ -123,7 +123,8 @@ changes, take a new profile.
 
 The game is CPU-bound: at crowded race starts the three application cores are at 285-290 % of 300 %,
 and that is when the sound breaks up. A Switch application normally may not use core 3 (the system's).
-A player reported ([#1](../../issues/1)) steady 30 FPS and clean sound with the fourth core enabled.
+A player reported ([#1](../../issues/1)) steady 30 FPS and clean sound with the fourth core enabled, and on
+our console the sound at Race Wars starts went from 59-179 missing blocks per 10 s to none at 1683 MHz.
 
 The game's threads use every core the process is given. What gives the process core 3 is the launcher
 (the forwarder's NPDM), so this needs a HOME Menu forwarder, not title takeover:

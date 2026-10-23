@@ -229,3 +229,14 @@ went from 268-391 per 10 s (mixer at 0x2D) to 59-179, then 0-30 once the pack sp
 the first 20-40 s, when the scene has 3500-5700 draws per frame, the game runs at 19-24 fps and the CPU is at
 270-286 % of 300. Stack samples there are flat (no function above ~4 % of a game thread), so the next big step is
 fewer draws (the game's LOD) or a higher CPU clock.
+
+## Session 23 (2026-10-23), the fourth core
+
+Sphaira forwarder installed with 4 CPU cores, threads taking the whole process mask (process mask 0xF,
+857 of 890 thread samples at 0xF). Race Wars at 1683 / 844 / 2133: missing audio blocks at the start 0, 1, 0, 0
+per 10 s (59-179 on three cores), CPU 289-319 % of 400. Frame rate at the start unchanged, 24-28 fps: the
+game's frame preparation thread is at 85-87 % of a core there and is now the limit; the GPU needs 21-24 ms.
+
+Mixer measurement: mixing the buses into their output channels costs at most 3.6-4.1 % of a core (start of
+Race Wars, 180,000-200,000 bus mixes and 620,000-690,000 gain sums per 10 s). Mixing in stereo instead of 5.1
+would save half of that at most, so it is not worth doing; the mixer's time is in the per-voice work.
