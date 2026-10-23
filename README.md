@@ -119,6 +119,25 @@ not in the repository (it is only valid for the exact sources it was taken from)
 Later builds keep the PGO mode of the build folder; `PGO=off` goes back to a plain build. After larger source
 changes, take a new profile.
 
+### Experimental: the fourth CPU core
+
+The game is CPU-bound: at crowded race starts the three application cores are at 285-290 % of 300 %,
+and that is when the sound breaks up. A Switch application normally may not use core 3 (the system's).
+A player reported ([#1](../../issues/1)) steady 30 FPS and clean sound with the fourth core enabled.
+
+The game's threads already use every core the process is given (log line `nucleos del proceso 4
+(mascara 0xF)` in `rex_perfil.log` when it works). What gives the process core 3 is the launcher's NPDM:
+
+1. Make an NSP forwarder for `nfscarbon-nx.nro` (any forwarder generator) and install it.
+2. Take its `main.npdm` (from the forwarder's ExeFS) and patch it:
+   `python3 tools/npdm_core3.py main.npdm -o main.npdm.core3`. This raises the highest allowed core from 2
+   to 3 in both kernel capability tables (ACI0 and ACID), nothing else.
+3. Copy the result to `sdmc:/atmosphere/contents/<forwarder title id>/exefs/main.npdm` and reboot.
+   Delete that file to undo.
+
+Core 3 is shared with the system (HOME menu, overlays, background services): untested in long sessions.
+Title takeover (holding R on a game) uses that game's NPDM and stays on three cores.
+
 ## Settings
 
 `nfscarbon.toml` describes each setting. The main ones:

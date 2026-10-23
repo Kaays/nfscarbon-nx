@@ -169,6 +169,12 @@ bool RexSwitchPinCurrentThreadToCore(int core);
 /* Which core the calling thread is running on right now. It can only be asked about oneself. */
 int RexSwitchCurrentCore(void);
 
+/*
+ * Lets the calling thread run on every core of the process mask (0xF when the launcher allows the
+ * fourth core, 0x7 normally). Called by every thread when it starts. Returns the process mask.
+ */
+uint64_t RexSwitchUseAllProcessCores(void);
+
 #ifdef __cplusplus
 }
 #endif

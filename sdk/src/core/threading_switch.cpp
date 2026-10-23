@@ -293,6 +293,29 @@ bool RexSwitchSetCurrentThreadCore(int core) {
 }
 
 /*
+ * Every core the process may use, for the calling thread.
+ *
+ * A Switch application normally gets cores 0-2 (process core mask 0x7); core 3 belongs to the
+ * system. A forwarder whose main.npdm allows core 3 (ThreadInfo MaxCoreNumber 3, see
+ * tools/npdm_core3.py) gives the process mask 0xF, but a thread only runs where its own affinity
+ * mask allows, and libnx creates threads on one core. So each thread asks for the whole process
+ * mask once, when it starts, keeping its ideal core (-3 = IdealCoreNoUpdate). With the usual 0x7
+ * this changes nothing. Returns the process mask (0 if it could not be read).
+ */
+uint64_t RexSwitchUseAllProcessCores() {
+  u64 process_mask = 0;
+  if (R_FAILED(svcGetInfo(&process_mask, InfoType_CoreMask, CUR_PROCESS_HANDLE, 0)) || !process_mask) {
+    return 0;
+  }
+  Thread* yo = threadGetSelf();
+  Handle h = (yo != nullptr) ? yo->handle : CUR_THREAD_HANDLE;
+  if (R_FAILED(svcSetThreadCoreMask(h, -3, process_mask & 0xF)) && h != CUR_THREAD_HANDLE) {
+    svcSetThreadCoreMask(CUR_THREAD_HANDLE, -3, process_mask & 0xF);
+  }
+  return process_mask;
+}
+
+/*
  * The real pin, with the mask reduced to a single core.
  *
  * Measured: a preferred core is not enough. Horizon accepts it and moves the thread anyway (0.24

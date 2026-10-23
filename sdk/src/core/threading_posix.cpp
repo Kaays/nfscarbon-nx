@@ -1546,6 +1546,9 @@ void* PosixCondition<Thread>::ThreadStartRoutine(void* parameter) {
   }
 #endif
   set_current_thread_name("");
+#if defined(__SWITCH__)
+  RexSwitchUseAllProcessCores();  // core 3 too, when the launcher's NPDM allows it
+#endif
 
   auto start_data = static_cast<ThreadStartData*>(parameter);
   assert_not_null(start_data);
