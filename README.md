@@ -80,7 +80,7 @@ Logs are written to `sdmc:/switch/nfscarbon-nx/logs/`. Saves go to `nfscarbon/` 
 
 Linux or WSL (Windows). Tested on WSL with Ubuntu. You need:
 
-- [devkitPro](https://devkitpro.org/wiki/Getting_Started) with `switch-dev` (devkitA64 and libnx);
+- [devkitPro](https://devkitpro.org/wiki/Getting_Started) with `switch-dev` (devkitA64 and libnx) and `switch-zlib` (`sudo dkp-pacman -S switch-dev switch-zlib`);
 - CMake 3.25+, Ninja, Python 3.10+, Clang 20 or newer for the PC tools, Docker (for Mesa);
 - about 16 GB of RAM (32 GB recommended) and 40-60 minutes for the final link with LTO.
 
