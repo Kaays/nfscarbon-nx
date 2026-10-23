@@ -125,18 +125,20 @@ The game is CPU-bound: at crowded race starts the three application cores are at
 and that is when the sound breaks up. A Switch application normally may not use core 3 (the system's).
 A player reported ([#1](../../issues/1)) steady 30 FPS and clean sound with the fourth core enabled.
 
-The game's threads already use every core the process is given (log line `nucleos del proceso 4
-(mascara 0xF)` in `rex_perfil.log` when it works). What gives the process core 3 is the launcher's NPDM:
+The game's threads use every core the process is given. What gives the process core 3 is the launcher
+(the forwarder's NPDM), so this needs a HOME Menu forwarder, not title takeover:
 
-1. Make an NSP forwarder for `nfscarbon-nx.nro` (any forwarder generator) and install it.
-2. Take its `main.npdm` (from the forwarder's ExeFS) and patch it:
-   `python3 tools/npdm_core3.py main.npdm -o main.npdm.core3`. This raises the highest allowed core from 2
-   to 3 in both kernel capability tables (ACI0 and ACID), nothing else.
-3. Copy the result to `sdmc:/atmosphere/contents/<forwarder title id>/exefs/main.npdm` and reboot.
-   Delete that file to undo.
+1. In [Sphaira](https://github.com/ITotalJustice/sphaira), install a forwarder for `nfscarbon-nx.nro`
+   and set its CPU core count to **4**. Replace an existing forwarder by deleting it first (the game
+   folder, saves and logs on the SD card stay as they are).
+2. Start the game from that forwarder. `logs/rex/rex_perfil.log` shows `nucleos del proceso 4
+   (mascara 0xF)` when it works.
 
-Core 3 is shared with the system (HOME menu, overlays, background services): untested in long sessions.
-Title takeover (holding R on a game) uses that game's NPDM and stays on three cores.
+Other forwarder tools: patch the forwarder's `main.npdm` with `python3 tools/npdm_core3.py main.npdm -o
+main.npdm.core3` (highest allowed core 2 -> 3 in both kernel capability tables, nothing else) and put it
+at `sdmc:/atmosphere/contents/<forwarder title id>/exefs/main.npdm`.
+
+Core 3 is shared with the system (HOME menu, overlays, background services): not tested in long sessions.
 
 ## Settings
 
