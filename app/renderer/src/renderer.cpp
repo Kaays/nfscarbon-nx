@@ -46,6 +46,9 @@ REXCVAR_DEFINE_INT32(carbon_gpu_dump_frame_interval, 0, "CarbonGPU",
 REXCVAR_DEFINE_INT32(carbon_gpu_vertex_arena_mb, 128, "CarbonGPU",
                      "Size of the persistent vertex buffer cache (0 = upload vertices every frame)")
     .range(0, 1024);
+REXCVAR_DEFINE_INT32(carbon_gpu_vertex_arena_check_interval, 4, "CarbonGPU",
+                     "Frames an unchanged cached vertex page may go between checks (1 = every frame)")
+    .range(1, 8);
 REXCVAR_DEFINE_BOOL(carbon_gpu_skip_redundant_resolves, true, "CarbonGPU",
                     "Skip resolves whose source contents, rectangle and parameters match the "
                     "previous resolve into the same destination region (false = always copy)");
@@ -1682,11 +1685,17 @@ void Renderer::ComputeViewport(const RegisterFile& regs, uint32_t rt_width, uint
 
 namespace {
 constexpr uint32_t kArenaPageBytes = 16 * 1024;
-constexpr uint8_t kArenaMaxInterval = 4;
+// How many frames an unchanged vertex page may go between checks (it doubles up to this). A buffer the
+// game rewrites between two checks is drawn from the old copy until the next one: a suspect for the
+// random one-frame white flash (a stray giant polygon). 1 = every page checked every frame it is used.
+uint8_t g_arena_max_interval = 4;
 }  // namespace
 
 bool Renderer::CreateVertexArena() {
   int32_t mb = REXCVAR_GET(carbon_gpu_vertex_arena_mb);
+  g_arena_max_interval = uint8_t(std::clamp(REXCVAR_GET(carbon_gpu_vertex_arena_check_interval), 1, 8));
+  REXGPU_INFO("[carbon-gpu] vertex arena: {} MiB, unchanged pages checked at least every {} frames", mb,
+              uint32_t(g_arena_max_interval));
   if (mb <= 0) {
     return true;
   }
@@ -1835,7 +1844,7 @@ bool Renderer::ArenaFetch(uint64_t key, uint32_t address, uint32_t size, uint32_
           changed = true;
           break;
         } else {
-          page.interval = std::min<uint8_t>(page.interval * 2, kArenaMaxInterval);
+          page.interval = std::min<uint8_t>(page.interval * 2, g_arena_max_interval);
         }
         page.checked = frame_number_;
       }

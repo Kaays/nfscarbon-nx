@@ -39,6 +39,9 @@ set(NFSCARBON_SOURCES
     src/audio_native.cpp
     # Optional scene detail trim: scales the projected object size the game's LOD test sees.
     src/lod_bias_hook.cpp
+    # Videos (cutscenes and the in-race picture-in-picture faces) through FFmpeg's WMV3 decoder.
+    src/video_hook.cpp
+    src/video_wmv3.cpp
     # PGO: profile dump of the instrumented build (empty unless NFSCARBON_PGO=generate).
     src/nfscarbon_pgo.cpp
 )
@@ -59,6 +62,8 @@ if(WIN32)
 else()
     add_executable(nfscarbon ${NFSCARBON_SOURCES})
 endif()
+# FFmpeg (built by the SDK) for the WMV3 video decoder.
+target_link_libraries(nfscarbon PRIVATE libavcodec libavutil)
 
 # The Xenos emulation stays available as a fallback (nfscarbon_renderer = "xenos").
 rexglue_setup_target(nfscarbon GPU_PLUGINS xenos)
