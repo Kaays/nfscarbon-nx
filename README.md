@@ -125,7 +125,7 @@ The game's threads use every core the process is given. What gives the process c
 (the forwarder's NPDM), so this needs a HOME Menu forwarder, not title takeover:
 
 1. In [Sphaira](https://github.com/ITotalJustice/sphaira), install a forwarder for `nfscarbon-nx.nro`
-   and set its CPU core count to **4**. Replace an existing forwarder by deleting it first (the game
+   set its CPU core count to **4** and its address space to **39-bit**. Replace an existing forwarder by deleting it first (the game
    folder, saves and logs on the SD card stay as they are).
 2. Start the game from that forwarder. `logs/rex/rex_perfil.log` shows `nucleos del proceso 4
    (mascara 0xF)` when it works.
