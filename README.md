@@ -218,7 +218,6 @@ This port only exists because of the work of these people and projects:
 - **[StevensND — nfsmw-nx](https://github.com/StevensND/nfsmw-nx)**: the Switch port of Need for Speed: Most Wanted.
   Its SDK layer, NVK patch, toolchain and documentation are the reference this port follows, and several fixes
   (frame handoff, code generator options) are ports of its solutions.
-- **[zofo007 — NFS-Carbon-NX](https://github.com/zofo007/NFS-Carbon-NX)**: another Switch port of Carbon; its
   scene detail (LOD) hook, its idea of skipping the car reflection faces and its mode-1 sample unpack are used here.
 - **[madelrandel-blip — NFSMW Recompiled](https://github.com/madelrandel-blip/NFSMW-Recompiled)**: the project
   nfsmw-nx started from.
