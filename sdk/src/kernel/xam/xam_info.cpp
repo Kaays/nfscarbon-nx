@@ -12,6 +12,8 @@
 #include <rex/kernel/xam/module.h>
 #include <rex/kernel/xam/private.h>
 #include <rex/logging.h>
+#include <rex/cvar.h>
+#include <rex/system/flags.h>
 #include <rex/hook.h>
 #include <rex/types.h>
 #include <rex/string.h>
@@ -183,19 +185,19 @@ u32 XGetGameRegion_entry() {
 }
 
 u32 XGetLanguage_entry() {
-  auto desired_language = XLanguage::kEnglish;
-
-  // Switch the language based on game region.
-  // TODO(benvanik): pull from xex header.
-  uint32_t game_region = XEX_REGION_NTSCU;
-  if (game_region & XEX_REGION_NTSCU) {
-    desired_language = XLanguage::kEnglish;
-  } else if (game_region & XEX_REGION_NTSCJ) {
-    desired_language = XLanguage::kJapanese;
+  // nfscarbon-nx: the console language the game sees comes from the user_language setting
+  // (1 English, 2 Japanese, 3 German, 4 French, 5 Spanish, 6 Italian, ...). The game picks its text,
+  // speech and localized video files by it, so the USA code can load another edition's language files.
+  uint32_t language = REXCVAR_GET(user_language);
+  if (language == 0 || language >= uint32_t(XLanguage::kMaxLanguages)) {
+    language = uint32_t(XLanguage::kEnglish);
   }
-  // Add more overrides?
-
-  return uint32_t(desired_language);
+  static bool logged = false;
+  if (!logged) {
+    logged = true;
+    REXLOG_INFO("[locale] XGetLanguage -> {}", language);
+  }
+  return language;
 }
 
 u32 XamGetCurrentTitleId_entry() {

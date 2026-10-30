@@ -74,5 +74,11 @@ nfscarbon_ring_wait_max_us = 1000
 # unregistered_targets.txt next to the NRO (send that file with bug reports).
 nfscarbon_tolerate_unregistered_calls = true
 
+# Console language the game sees: 1 English, 2 Japanese, 3 German, 4 French,
+# 5 Spanish, 6 Italian. The game loads its text, speech and localized videos by it.
+# The USA disc has English and Spanish text; for other languages (and Spanish
+# speech and cutscenes) copy the language files of a European disc into game_root.
+user_language = 1
+
 # Face buttons by position (Xbox layout) instead of by letter.
 input_xbox_layout = false
