@@ -17,3 +17,7 @@ out_directory_path = "generated/default"
 includes = ["overrides_pal.toml"]
 
 [entrypoint.functions]
+# Targets of tail branches the analysis found in no function (codegen validation, first run).
+0x82321990 = {}  # b from 0x823003E8
+0x82A623E8 = {}  # b from 0x82A6321C
+0x82A65770 = {}  # b from 0x82A65BD4
