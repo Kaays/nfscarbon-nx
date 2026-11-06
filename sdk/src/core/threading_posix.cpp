@@ -20,7 +20,10 @@ static_assert(REX_PLATFORM_LINUX || REX_PLATFORM_MAC, "This file is POSIX-only")
 #include <ctime>
 #include <deque>
 #include <limits>
+#include <algorithm>
 #include <memory>
+#include <mutex>
+#include <vector>
 
 #include <pthread.h>
 #include <semaphore.h>
@@ -721,6 +724,51 @@ struct ThreadStartData {
   Thread* thread_obj;
 };
 
+// nfscarbon-nx: finished threads give their host stack back.
+// A pthread that ends keeps its stack until it is joined, and a thread is only joined when someone waits on
+// its handle (post_execution). Threads nobody waits on (the game's video and loader threads) kept 16 MiB
+// each, until CreateThread failed with no memory late in a career session. A finished thread now puts
+// itself on this list, and the next Thread::Create joins those (they have returned, so the join is
+// immediate) before asking for a new stack.
+namespace {
+std::mutex g_reap_mutex;
+std::vector<std::pair<const void*, pthread_t>> g_reap_list;  // condition, pthread; protected by g_reap_mutex
+std::vector<const void*> g_joined;  // conditions already joined by the reaper; protected by g_reap_mutex
+
+void ReapFinishedThreads() {
+  std::vector<pthread_t> to_join;
+  {
+    std::lock_guard<std::mutex> lock(g_reap_mutex);
+    for (auto& [cond, t] : g_reap_list) {
+      to_join.push_back(t);
+      g_joined.push_back(cond);
+    }
+    g_reap_list.clear();
+  }
+  for (pthread_t t : to_join) {
+    pthread_join(t, nullptr);
+  }
+}
+
+// Called before joining from post_execution (after a wait on the thread succeeded, possibly several times).
+// Returns true if the thread was already joined (by the reaper or an earlier wait): do not join again.
+bool AlreadyJoined(const void* cond) {
+  std::lock_guard<std::mutex> lock(g_reap_mutex);
+  if (std::find(g_joined.begin(), g_joined.end(), cond) != g_joined.end()) {
+    return true;
+  }
+  std::erase_if(g_reap_list, [cond](const auto& e) { return e.first == cond; });
+  g_joined.push_back(cond);  // the caller joins it now
+  return false;
+}
+
+void ForgetCondition(const void* cond) {
+  std::lock_guard<std::mutex> lock(g_reap_mutex);
+  std::erase_if(g_reap_list, [cond](const auto& e) { return e.first == cond; });
+  std::erase(g_joined, cond);
+}
+}  // namespace
+
 template <>
 class PosixCondition<Thread> : public PosixConditionBase {
   enum class State {
@@ -794,6 +842,7 @@ class PosixCondition<Thread> : public PosixConditionBase {
   }
 
   virtual ~PosixCondition() {
+    ForgetCondition(this);
     // Match Canary/Edge behavior.
     // Force-cancel/join from the condition destructor can self-join/crash
     // depending on shutdown ordering, so threads must be stopped explicitly.
@@ -1152,7 +1201,7 @@ class PosixCondition<Thread> : public PosixConditionBase {
   static void* ThreadStartRoutine(void* parameter);
   inline bool signaled() const override { return signaled_; }
   inline void post_execution() override {
-    if (thread_) {
+    if (thread_ && !AlreadyJoined(this)) {
       pthread_join(thread_, nullptr);
     }
 #if defined(__APPLE__)
@@ -1588,6 +1637,12 @@ void* PosixCondition<Thread>::ThreadStartRoutine(void* parameter) {
     thread->handle_.state_ = State::kFinished;
   }
 
+  // On the reaper's list before the handle is signaled, so a waiter's post_execution and the reaper never
+  // both join it.
+  {
+    std::lock_guard<std::mutex> lock(g_reap_mutex);
+    g_reap_list.emplace_back(&thread->handle_, pthread_self());
+  }
   {
     std::unique_lock<std::mutex> lock(thread->handle_.mutex_);
     thread->handle_.exit_code_ = 0;
@@ -1608,6 +1663,7 @@ std::unique_ptr<Thread> Thread::Create(CreationParameters params,
 #if REX_PLATFORM_ANDROID
   install_signal_handler(SignalType::kThreadTerminate);
 #endif
+  ReapFinishedThreads();
   auto thread = std::make_unique<PosixThread>();
   if (!thread->Initialize(params, std::move(start_routine)))
     return nullptr;

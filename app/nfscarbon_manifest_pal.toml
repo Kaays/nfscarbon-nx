@@ -448,3 +448,5 @@ includes = ["overrides_pal.toml"]
 0x8249BB70 = {}
 0x8249BB80 = {}
 0x8249BB90 = {}
+# Logged in career (2026-11-06). USA 0x82575CF0 (+0x270 like its neighbours; the map had 10 matches).
+0x82575F60 = {}  # usa 0x82575CF0
