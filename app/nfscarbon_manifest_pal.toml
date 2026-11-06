@@ -381,3 +381,13 @@ includes = ["overrides_pal.toml"]
 0x82541968 = {}  # usa 0x825416B0
 0x825419C0 = {}  # usa 0x82541708
 0x825419F8 = {}  # usa 0x82541740
+# Logged on the console entering a race (2026-11-06): 0x8249BB38 skipped, then a null read.
+0x8249BB38 = {}
+# The 0x20-spaced stubs at 0x82189528-0x821895C8 sit at the same address as in USA (0x82189548 was
+# logged on the console; the map had them as "closest of 13").
+0x82189528 = {}  # usa 0x82189528
+0x82189548 = {}  # usa 0x82189548
+0x82189568 = {}  # usa 0x82189568
+0x82189588 = {}  # usa 0x82189588
+0x821895A8 = {}  # usa 0x821895A8
+0x821895C8 = {}  # usa 0x821895C8
