@@ -1,0 +1,445 @@
+# usa -> pal: 444 addresses (tools/map_edition.py)
+0x820510B8 0x820510B8 +0x0000 window 16                      const:src/audio_thread_hook.cpp
+0x820C7E18 0x820C7B68 -0x02b0 window 16                      const:src/audio_native.cpp
+0x820C7F24 0x820C7C74 -0x02b0 window 16                      const:src/audio_native.cpp
+0x8211DF18 0x8211DF18 +0x0000 window 16                      manifest:nfscarbon_manifest.toml
+0x821641C8 0x82164290 +0x00c8 closest of 2, near delta +0xc8 manifest:nfscarbon_manifest.toml
+0x821641E8 0x821642B0 +0x00c8 window 64                      manifest:nfscarbon_manifest.toml
+0x82164208 0x821642D0 +0x00c8 window 64                      manifest:nfscarbon_manifest.toml
+0x82164228 0x821642F0 +0x00c8 window 64                      manifest:nfscarbon_manifest.toml
+0x82164248 0x82164310 +0x00c8 window 64                      manifest:nfscarbon_manifest.toml
+0x82164268 0x82164330 +0x00c8 window 32                      manifest:nfscarbon_manifest.toml
+0x82164288 0x82164350 +0x00c8 window 32                      manifest:nfscarbon_manifest.toml
+0x821642A8 0x82164370 +0x00c8 window 16                      manifest:nfscarbon_manifest.toml
+0x8216D608 ?          54 matches                               manifest:nfscarbon_manifest.toml
+0x8216D628 0x8216D628 +0x0000 closest of 54                  manifest:nfscarbon_manifest.toml
+0x8216D7B0 0x8216D878 +0x00c8 window 32                      manifest:nfscarbon_manifest.toml
+0x8216D7E0 0x8216D8A8 +0x00c8 window 16                      manifest:nfscarbon_manifest.toml
+0x8216D800 0x8216D8C8 +0x00c8 window 16                      manifest:nfscarbon_manifest.toml
+0x82189468 ?          13 matches                               manifest:nfscarbon_manifest.toml
+0x82189488 ?          13 matches                               manifest:nfscarbon_manifest.toml
+0x821894A8 ?          13 matches                               manifest:nfscarbon_manifest.toml
+0x821894C8 ?          13 matches                               manifest:nfscarbon_manifest.toml
+0x821894E8 ?          13 matches                               manifest:nfscarbon_manifest.toml
+0x82189508 ?          13 matches                               manifest:nfscarbon_manifest.toml
+0x82189528 0x82189528 +0x0000 closest of 13                  manifest:nfscarbon_manifest.toml
+0x82189548 0x82189548 +0x0000 closest of 13                  manifest:nfscarbon_manifest.toml
+0x82189568 0x82189568 +0x0000 closest of 13                  manifest:nfscarbon_manifest.toml
+0x82189588 0x82189588 +0x0000 closest of 13                  manifest:nfscarbon_manifest.toml
+0x821895A8 0x821895A8 +0x0000 closest of 13                  manifest:nfscarbon_manifest.toml
+0x821895C8 0x821895C8 +0x0000 closest of 13                  manifest:nfscarbon_manifest.toml
+0x821895E8 0x821896C8 +0x00e0 window 64                      manifest:nfscarbon_manifest.toml
+0x82189608 0x821896E8 +0x00e0 window 64                      manifest:nfscarbon_manifest.toml
+0x82189628 0x82189708 +0x00e0 window 64                      manifest:nfscarbon_manifest.toml
+0x82189648 0x82189728 +0x00e0 window 64                      manifest:nfscarbon_manifest.toml
+0x82189668 0x82189748 +0x00e0 window 32                      manifest:nfscarbon_manifest.toml
+0x82189688 0x82189768 +0x00e0 window 32                      manifest:nfscarbon_manifest.toml
+0x821896A8 0x82189788 +0x00e0 window 16                      manifest:nfscarbon_manifest.toml
+0x821896C8 0x821897A8 +0x00e0 window 16                      manifest:nfscarbon_manifest.toml
+0x821A3EC8 0x821A3FC0 +0x00f8 window 16                      manifest:nfscarbon_manifest.toml
+0x821B29E0 0x821B2AD8 +0x00f8 closest of 4                   manifest:nfscarbon_manifest.toml
+0x821B4C48 0x821B4D40 +0x00f8 closest of 4                   manifest:nfscarbon_manifest.toml
+0x821B5840 0x821B5938 +0x00f8 closest of 4                   manifest:nfscarbon_manifest.toml
+0x821B6480 0x821B6578 +0x00f8 closest of 4                   manifest:nfscarbon_manifest.toml
+0x821B7820 0x821B7918 +0x00f8 window 16                      manifest:nfscarbon_manifest.toml
+0x821CCDD0 0x821CCED8 +0x0108 window 16                      manifest:nfscarbon_manifest.toml
+0x821CF620 0x821CF728 +0x0108 window 16                      manifest:nfscarbon_manifest.toml
+0x8221A010 0x8221A1D0 +0x01c0 window 16                      manifest:nfscarbon_manifest.toml
+0x8221A7EC 0x8221A9AC +0x01c0 window 16                      manifest:nfscarbon_manifest.toml
+0x82235638 0x82235828 +0x01f0 window 16                      manifest:nfscarbon_manifest.toml
+0x82254F60 0x82255170 +0x0210 window 16                      manifest:nfscarbon_manifest.toml
+0x82287280 0x822874A0 +0x0220 window 16                      manifest:nfscarbon_manifest.toml
+0x82287C90 0x82287EB0 +0x0220 window 16                      manifest:nfscarbon_manifest.toml
+0x8228E788 0x8228E9A8 +0x0220 closest of 12, near delta +0x220 manifest:nfscarbon_manifest.toml
+0x82296388 0x822965A8 +0x0220 window 64                      manifest:nfscarbon_manifest.toml
+0x822A93B0 0x822A95D0 +0x0220 window 16                      manifest:nfscarbon_manifest.toml
+0x822AF8A0 0x822AFAC0 +0x0220 window 16                      manifest:nfscarbon_manifest.toml
+0x822AFF00 0x822B0120 +0x0220 window 32                      manifest:nfscarbon_manifest.toml
+0x822B4DF0 0x822B5010 +0x0220 window 64                      manifest:nfscarbon_manifest.toml
+0x822E3E90 0x822E40B0 +0x0220 window 16                      manifest:nfscarbon_manifest.toml
+0x822FB9C0 0x822FBBE0 +0x0220 window 16                      manifest:nfscarbon_manifest.toml
+0x822FC708 0x822FC928 +0x0220 window 16                      manifest:nfscarbon_manifest.toml
+0x8231E160 0x8231E378 +0x0218 window 16                      manifest:nfscarbon_manifest.toml
+0x823217D0 0x82321990 +0x01c0 closest of 2, near delta +0x1c0 manifest:nfscarbon_manifest.toml
+0x82321FC8 0x82322188 +0x01c0 window 32                      manifest:nfscarbon_manifest.toml
+0x823231F8 0x823233D0 +0x01d8 window 16                      manifest:nfscarbon_manifest.toml
+0x82332570 0x82332740 +0x01d0 window 16                      manifest:nfscarbon_manifest.toml
+0x82350330 0x823504F8 +0x01c8 window 16                      manifest:nfscarbon_manifest.toml
+0x82356C68 0x82356DC8 +0x0160 short window 12                manifest:nfscarbon_manifest.toml
+0x823B3848 0x823B3A10 +0x01c8 window 16                      manifest:nfscarbon_manifest.toml
+0x82400EC0 0x824010A0 +0x01e0 window 16                      manifest:nfscarbon_manifest.toml
+0x82426ED0 0x824270A8 +0x01d8 window 64                      manifest:nfscarbon_manifest.toml
+0x824694C0 0x82469808 +0x0348 window 16                      hook:src/frame_handoff_hook.cpp
+0x8249B690 0x8249B9F0 +0x0360 window 64                      manifest:nfscarbon_manifest.toml
+0x8249B698 0x8249B9F0 +0x0358 window 64                      manifest:nfscarbon_manifest.toml
+0x8249B6A8 0x8249B9F0 +0x0348 window 64                      manifest:nfscarbon_manifest.toml
+0x8249B6B0 0x8249B9F0 +0x0340 window 64                      manifest:nfscarbon_manifest.toml
+0x8249B6B8 0x8249B9F0 +0x0338 window 64                      manifest:nfscarbon_manifest.toml
+0x8249B6E0 0x8249B9F0 +0x0310 window 64                      manifest:nfscarbon_manifest.toml
+0x8249B6F0 0x8249B9F0 +0x0300 window 64                      manifest:nfscarbon_manifest.toml
+0x8249B718 0x8249BA00 +0x02e8 window 64                      manifest:nfscarbon_manifest.toml
+0x8249B738 0x8249BA20 +0x02e8 window 64                      manifest:nfscarbon_manifest.toml
+0x8249B768 ?          not found                                manifest:nfscarbon_manifest.toml
+0x8249B788 ?          not found                                manifest:nfscarbon_manifest.toml
+0x8249B7B8 0x8249BAA0 +0x02e8 window 32                      manifest:nfscarbon_manifest.toml
+0x8249B7C0 ?          not found                                manifest:nfscarbon_manifest.toml
+0x8249B7D0 0x8249BAB8 +0x02e8 window 16                      manifest:nfscarbon_manifest.toml
+0x8249B7E0 0x8249BAC8 +0x02e8 window 16                      manifest:nfscarbon_manifest.toml
+0x8249B7E8 0x8249BAD0 +0x02e8 window 16                      manifest:nfscarbon_manifest.toml
+0x8249B7F0 0x8249BAD8 +0x02e8 window 16                      manifest:nfscarbon_manifest.toml
+0x8249B7F8 0x8249BAE0 +0x02e8 window 16                      manifest:nfscarbon_manifest.toml
+0x8249B810 0x8249BB78 +0x0368 window 16                      manifest:nfscarbon_manifest.toml
+0x8249B830 0x8249BB98 +0x0368 window 16                      manifest:nfscarbon_manifest.toml
+0x824A5E78 0x824A61E8 +0x0370 window 16                      manifest:nfscarbon_manifest.toml
+0x824C6260 0x824C6620 +0x03c0 window 16                      manifest:nfscarbon_manifest.toml
+0x824D5010 0x824D53D8 +0x03c8 closest of 76, near delta +0x3c8 manifest:nfscarbon_manifest.toml
+0x824D50F8 0x824D54C0 +0x03c8 closest of 76, near delta +0x3c8 manifest:nfscarbon_manifest.toml
+0x824D5148 0x824D5510 +0x03c8 window 64                      manifest:nfscarbon_manifest.toml
+0x824D5198 0x824D5560 +0x03c8 window 64                      manifest:nfscarbon_manifest.toml
+0x824DA968 0x824DAC58 +0x02f0 window 16                      manifest:nfscarbon_manifest.toml
+0x824E9720 0x824E9A10 +0x02f0 window 16                      hook:src/frame_handoff_hook.cpp
+0x824E977C 0x824E9A6C +0x02f0 window 16                      const:src/frame_handoff_hook.cpp
+0x824E981C 0x824E9B0C +0x02f0 window 16                      const:src/frame_handoff_hook.cpp
+0x824E9948 0x824E9C38 +0x02f0 window 16                      hook:src/frame_handoff_hook.cpp
+0x824E99E4 0x824E9CD4 +0x02f0 window 16                      const:src/frame_handoff_hook.cpp
+0x824E9A80 0x824E9D70 +0x02f0 window 16                      hook:src/frame_handoff_hook.cpp
+0x824F0210 0x824F0500 +0x02f0 window 16                      hook:src/frame_handoff_hook.cpp
+0x824FFBE0 0x824FFEE8 +0x0308 window 16                      hook:src/render_mode_hook.cpp
+0x82500298 0x825005A0 +0x0308 window 16                      hook:src/render_mode_hook.cpp
+0x8250B200 0x8250B508 +0x0308 window 16                      hook:src/render_mode_hook.cpp
+0x82527658 0x82527980 +0x0328 window 16                      manifest:nfscarbon_manifest.toml
+0x82531B1C 0x82531E44 +0x0328 window 16                      manifest:nfscarbon_manifest.toml
+0x82531FB8 0x825322E0 +0x0328 window 16                      manifest:nfscarbon_manifest.toml
+0x82541688 0x82541940 +0x02b8 closest of 33, near delta +0x2b8 manifest:nfscarbon_manifest.toml
+0x825416B0 0x82541968 +0x02b8 closest of 33, near delta +0x2b8 manifest:nfscarbon_manifest.toml
+0x82541708 0x825419C0 +0x02b8 closest of 33, near delta +0x2b8 manifest:nfscarbon_manifest.toml
+0x82541740 0x825419F8 +0x02b8 closest of 33, near delta +0x2b8 manifest:nfscarbon_manifest.toml
+0x82541750 0x82541A08 +0x02b8 window 64                      manifest:nfscarbon_manifest.toml
+0x82541760 0x82541A18 +0x02b8 window 64                      manifest:nfscarbon_manifest.toml
+0x82541778 0x82541A30 +0x02b8 window 64                      manifest:nfscarbon_manifest.toml
+0x825417A8 0x82541A60 +0x02b8 window 64                      manifest:nfscarbon_manifest.toml
+0x82575C50 0x82575EC0 +0x0270 window 64                      manifest:nfscarbon_manifest.toml
+0x82575C70 0x82575EE0 +0x0270 window 64                      manifest:nfscarbon_manifest.toml
+0x82575C90 0x82575F00 +0x0270 window 32                      manifest:nfscarbon_manifest.toml
+0x82575CB0 0x82575F20 +0x0270 window 32                      manifest:nfscarbon_manifest.toml
+0x82575CD0 0x82575F40 +0x0270 window 16                      manifest:nfscarbon_manifest.toml
+0x82575CF0 ?          10 matches                               manifest:nfscarbon_manifest.toml
+0x82586288 0x82586500 +0x0278 window 16                      hook:src/lod_bias_hook.cpp
+0x82586908 0x82586B80 +0x0278 window 16                      hook:src/lod_bias_hook.cpp
+0x8259ABB0 0x8259ADB8 +0x0208 window 16                      manifest:nfscarbon_manifest.toml
+0x825BF728 0x825BF858 +0x0130 window 16                      manifest:nfscarbon_manifest.toml
+0x825D85F0 0x825D86D0 +0x00e0 window 16                      manifest:nfscarbon_manifest.toml
+0x825E3E28 0x825E3F08 +0x00e0 window 16                      hook:src/audio_server_hook.cpp
+0x82614018 0x826140D8 +0x00c0 window 64                      manifest:nfscarbon_manifest.toml
+0x82614030 0x826140F0 +0x00c0 window 64                      manifest:nfscarbon_manifest.toml
+0x82614078 0x82614138 +0x00c0 window 64                      manifest:nfscarbon_manifest.toml
+0x826140C8 0x82614188 +0x00c0 window 16                      manifest:nfscarbon_manifest.toml
+0x8263C820 0x8263B870 -0x0fb0 window 16                      manifest:nfscarbon_manifest.toml
+0x8263DFB4 0x8263D004 -0x0fb0 window 16                      manifest:nfscarbon_manifest.toml
+0x82642670 0x82641638 -0x1038 window 16                      manifest:nfscarbon_manifest.toml
+0x82667A38 0x82666A08 -0x1030 window 16                      manifest:nfscarbon_manifest.toml
+0x82668188 0x82667158 -0x1030 window 16                      manifest:nfscarbon_manifest.toml
+0x8266FCE4 0x8266ECB4 -0x1030 window 16                      manifest:nfscarbon_manifest.toml
+0x826AA418 0x826A93C0 -0x1058 window 16                      hook:src/audio_server_hook.cpp
+0x826B56A8 0x826B4658 -0x1050 window 16                      hook:src/audio_native.cpp
+0x826BEB68 0x826BDB20 -0x1048 window 16                      hook:src/audio_native.cpp
+0x826C4BE8 0x826C3BC0 -0x1028 window 16                      hook:src/audio_native.cpp
+0x826C6358 0x826C5330 -0x1028 window 16                      hook:src/audio_thread_hook.cpp
+0x826C6AB0 0x826C5A88 -0x1028 window 16                      hook:src/audio_server_hook.cpp
+0x826C6B0C 0x826C5AE4 -0x1028 window 16                      const:src/audio_server_hook.cpp
+0x826C6B10 0x826C5AE8 -0x1028 window 16                      const:src/audio_server_hook.cpp
+0x826C6BCC 0x826C5BA4 -0x1028 window 16                      const:src/audio_server_hook.cpp
+0x826C6C10 0x826C5BE8 -0x1028 window 16                      const:src/audio_server_hook.cpp
+0x826C6C14 0x826C5BEC -0x1028 window 16                      const:src/audio_server_hook.cpp
+0x826C6C28 0x826C5C00 -0x1028 window 16                      const:src/audio_server_hook.cpp
+0x826C6CD0 0x826C5CA8 -0x1028 window 16                      hook:src/audio_thread_hook.cpp
+0x826C6D88 0x826C5D60 -0x1028 window 16                      hook:src/audio_server_hook.cpp
+0x826C6DA8 0x826C5D80 -0x1028 window 16                      hook:src/audio_server_hook.cpp
+0x826C8BB0 0x826C7B88 -0x1028 window 16                      hook:src/audio_native.cpp
+0x826CB1D8 0x826CA1B0 -0x1028 window 16                      hook:src/audio_native.cpp
+0x826CB350 0x826CA328 -0x1028 window 16                      hook:src/audio_native.cpp
+0x826CD8D0 0x826CC8A8 -0x1028 window 16                      hook:src/audio_native.cpp
+0x826D15D0 0x826D05A8 -0x1028 window 16                      hook:src/audio_native.cpp
+0x826D1FC0 0x826D0F98 -0x1028 window 16                      hook:src/audio_native.cpp
+0x826D3734 0x826D270C -0x1028 window 16                      manifest:nfscarbon_manifest.toml
+0x826D374C 0x826D2724 -0x1028 window 16                      manifest:nfscarbon_manifest.toml
+0x826D3758 0x826D2730 -0x1028 window 16                      manifest:nfscarbon_manifest.toml
+0x826DBB80 0x826DAB58 -0x1028 window 16                      hook:src/ring_wait_hook.cpp
+0x826DBBF8 0x826DABD0 -0x1028 window 16                      const:src/ring_wait_hook.cpp
+0x826DBD78 0x826DAD50 -0x1028 window 16                      hook:src/ring_wait_hook.cpp
+0x826DBE14 0x826DADEC -0x1028 window 16                      const:src/ring_wait_hook.cpp
+0x826E0250 0x826DF228 -0x1028 window 16                      hook:src/ring_wait_hook.cpp
+0x82732B28 0x82731B08 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82797494 0x82796474 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82797544 0x82796524 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x827975DC 0x827965BC -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82797694 0x82796674 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x82798290 0x82797270 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827982D0 0x827972B0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8279A3D4 0x827993B4 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8279A3E4 0x827993C4 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x8279AAD8 0x82799AB8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8279AB28 0x82799B08 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8279AF4C 0x82799F2C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8279AF68 0x82799F48 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8279B0A4 0x8279A084 -0x1020 closest of 4, near delta -0x1020 manifest:nfscarbon_manifest.toml
+0x8279B1F0 0x8279A1D0 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x8279B6B0 0x8279A690 -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x8279B6BC 0x8279A69C -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x8279B7B8 0x8279A798 -0x1020 closest of 4, near delta -0x1020 manifest:nfscarbon_manifest.toml
+0x8279B904 0x8279A8E4 -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x8279B9F0 0x8279A9D0 -0x1020 closest of 4, near delta -0x1020 manifest:nfscarbon_manifest.toml
+0x8279BB3C 0x8279AB1C -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x8279BD40 0x8279AD20 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8279BDF0 0x8279ADD0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8279D060 0x8279C040 -0x1020 window 16                      manifest:overrides.toml
+0x8279D6E0 0x8279C6C0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8279D6F4 0x8279C6D4 -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x8279DA0C 0x8279C9EC -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8279DA24 0x8279CA04 -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x8279DD28 0x8279CD08 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8279DE80 0x8279CE60 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8279E034 0x8279D014 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8279E234 0x8279D214 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A0D5C 0x8279FD3C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A0D90 0x8279FD70 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x827A3A0C 0x827A29EC -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A3A90 0x827A2A70 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x827A3C18 0x827A2BF8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A3C6C 0x827A2C4C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A3CCC 0x827A2CAC -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A3CE4 0x827A2CC4 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A3E28 0x827A2E08 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A3E34 0x827A2E14 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A4088 0x827A3068 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A40D4 0x827A30B4 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A4420 0x827A3400 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A4558 0x827A3538 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x827A4E50 0x827A3E30 -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x827A4E9C 0x827A3E7C -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x827A4FAC 0x827A3F8C -0x1020 closest of 4                   manifest:nfscarbon_manifest.toml
+0x827A50FC 0x827A40DC -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x827A53E0 0x827A43C0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A5418 0x827A43F8 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x827A5524 0x827A4504 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A552C 0x827A450C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A5538 0x827A4518 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A55AC 0x827A458C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A55B4 0x827A4594 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A55C0 0x827A45A0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A58DC 0x827A48BC -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A58E8 0x827A48C8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A58F8 0x827A48D8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827A9418 0x827A83F8 -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x827A9464 0x827A8444 -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x827A9780 0x827A8760 -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x827A978C 0x827A876C -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x827A9B48 0x827A8B28 -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x827A9B94 0x827A8B74 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x827AA1AC 0x827A918C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AA200 0x827A91E0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AA234 0x827A9214 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AA24C 0x827A922C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AAAD4 0x827A9AB4 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AAAEC 0x827A9ACC -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AAC64 0x827A9C44 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AAC84 0x827A9C64 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AAFA8 0x827A9F88 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AAFF0 0x827A9FD0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AC430 0x827AB410 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AC4D4 0x827AB4B4 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AC6DC 0x827AB6BC -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AC76C 0x827AB74C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AE344 0x827AD324 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AE37C 0x827AD35C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AE5F8 0x827AD5D8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AE658 0x827AD638 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AE914 0x827AD8F4 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AE948 0x827AD928 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AEA34 0x827ADA14 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AEA9C 0x827ADA7C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AEAD0 0x827ADAB0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AEBF0 0x827ADBD0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AED00 0x827ADCE0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AED68 0x827ADD48 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AF790 0x827AE770 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AF7C8 0x827AE7A8 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x827AFAB8 0x827AEA98 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827AFAF4 0x827AEAD4 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x827AFFB4 0x827AEF94 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x827B0114 0x827AF0F4 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827B0684 0x827AF664 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827B06A0 0x827AF680 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827B0710 0x827AF6F0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827B0714 0x827AF6F4 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827B0788 0x827AF768 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827B0794 0x827AF774 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BA168 0x827B9148 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BA16C 0x827B914C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BA17C 0x827B915C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BA290 0x827B9270 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BA4D8 0x827B94B8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BA4E8 0x827B94C8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BA540 0x827B9520 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BA570 0x827B9550 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BA580 0x827B9560 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BA628 0x827B9608 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BA7D0 0x827B97B0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BA7E0 0x827B97C0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BAB38 0x827B9B18 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BAB60 0x827B9B40 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BAB70 0x827B9B50 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BADF4 0x827B9DD4 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BB198 0x827BA178 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BB1A8 0x827BA188 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BB504 0x827BA4E4 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BB7B4 0x827BA794 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BB7C4 0x827BA7A4 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BB888 0x827BA868 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BB88C 0x827BA86C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BB89C 0x827BA87C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BB97C 0x827BA95C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BB9B8 0x827BA998 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BB9C8 0x827BA9A8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BBA3C 0x827BAA1C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BBC7C 0x827BAC5C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BBC8C 0x827BAC6C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BBFA8 0x827BAF88 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BC0C4 0x827BB0A4 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BC0D4 0x827BB0B4 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827BC970 0x827BB950 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827C4570 0x827C3550 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x827C4590 0x827C3570 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827C6D70 0x827C5D50 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x827C6D90 0x827C5D70 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x827C6DB0 0x827C5D90 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x827C6DD0 0x827C5DB0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827C70E0 0x827C60C0 -0x1020 closest of 4, near delta -0x1020 manifest:nfscarbon_manifest.toml
+0x827C7100 0x827C60E0 -0x1020 closest of 4, near delta -0x1020 manifest:nfscarbon_manifest.toml
+0x827C7120 0x827C6100 -0x1020 closest of 4, near delta -0x1020 manifest:nfscarbon_manifest.toml
+0x827C7140 0x827C6120 -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x827C7160 0x827C6140 -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x827C7180 0x827C6160 -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x827C71A0 0x827C6180 -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x827C71C0 0x827C61A0 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x827C71E0 0x827C61C0 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x827C7200 0x827C61E0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827CE6C8 0x827CD6A8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827DA8B0 0x827D9890 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x827DA8CC 0x827D98AC -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x827DAA38 0x827D9A18 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x827DAA44 0x827D9A24 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x8280F1E0 0x8280E1C0 -0x1020 window 16                      hook:src/video_hook.cpp
+0x8281EAF8 0x8281DAD8 -0x1020 window 16                      hook:src/video_hook.cpp
+0x8282E0F0 0x8282D0D0 -0x1020 window 16                      hook:src/video_hook.cpp
+0x8283A8D8 0x828398B8 -0x1020 window 16                      hook:src/video_hook.cpp
+0x828654E8 0x828644C8 -0x1020 window 16                      hook:src/video_hook.cpp
+0x82893E40 0x82892E20 -0x1020 window 16                      hook:src/video_hook.cpp
+0x82924F0C 0x82923EEC -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82924F24 0x82923F04 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82924F30 0x82923F10 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82943548 0x82942528 -0x1020 window 16                      hook:src/frame_handoff_hook.cpp
+0x829439E0 0x829429C0 -0x1020 window 16                      hook:src/frame_handoff_hook.cpp
+0x829446FC 0x829436DC -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82944890 0x82943870 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8294489C 0x8294387C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82944F44 0x82943F24 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82944F68 0x82943F48 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8294502C 0x8294400C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8294503C 0x8294401C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82945040 0x82944020 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82946B48 0x82945B28 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82946B68 0x82945B48 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82946B78 0x82945B58 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82947128 0x82946108 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x829478E4 0x829468C4 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82947A5C 0x82946A3C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82947A80 0x82946A60 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82948270 0x82947250 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82948280 0x82947260 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x829482A0 0x82947280 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x829483D8 0x829473B8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x829485A4 0x82947584 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8294869C 0x8294767C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x829486C8 0x829476A8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82948848 0x82947828 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82948858 0x82947838 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82948864 0x82947844 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x829489EC 0x829479CC -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82948A14 0x829479F4 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82948F48 0x82947F28 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82948F68 0x82947F48 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82948F78 0x82947F58 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x829490E0 0x829480C0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x829490F0 0x829480D0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x829490FC 0x829480DC -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8294CEA8 0x8294BE88 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8294CECC 0x8294BEAC -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8294CED8 0x8294BEB8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82958518 0x829574F8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82958700 0x829576E0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x8297C460 0x8297B440 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82988C20 0x82987C00 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82988C38 0x82987C18 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x829CDC70 0x829CCC50 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x829CDC80 0x829CCC60 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x829CDC90 0x829CCC70 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x829D3C40 0x829D2C20 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x829D4138 0x829D3118 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x829E3B20 0x829E2B00 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x829EC2D0 0x829EB2B0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x829F4A90 0x829F3A70 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A00540 0x829FF520 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A00CF0 0x829FFCD0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A00CF8 0x829FFCD8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A00D00 0x829FFCE0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A00D10 0x829FFCF0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A0F3C8 0x82A0E3A8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A0F3E0 0x82A0E3C0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A0F440 0x82A0E420 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A0F458 0x82A0E438 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A0F470 0x82A0E450 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x82A137D0 0x82A127B0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A13D10 0x82A12CF0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A13DB0 0x82A12D90 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A250B8 0x82A24098 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A41064 0x82A40044 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A469C0 0x82A459A0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A4A96C 0x82A4994C -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A4A984 0x82A49964 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A4C4E0 0x82A4B4C0 -0x1020 window 64                      hook:src/audio_server_hook.cpp
+0x82A4C630 0x82A4B610 -0x1020 window 64                      hook:src/audio_server_hook.cpp
+0x82A4DB58 0x82A4CB38 -0x1020 window 16                      hook:src/audio_server_hook.cpp
+0x82A584D0 0x82A574B0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A584D8 0x82A574B8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A58C00 0x82A57BE0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A59A88 0x82A58A68 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A63408 0x82A623E8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A64218 0x82A631F8 -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x82A64258 0x82A63238 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x82A64270 0x82A63250 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A64288 0x82A63268 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A64298 0x82A63278 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A642A0 0x82A63280 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A65708 0x82A646E8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A66790 0x82A65770 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A66B60 0x82A65B40 -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x82A66B80 0x82A65B60 -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x82A66B88 0x82A65B68 -0x1020 window 64                      manifest:nfscarbon_manifest.toml
+0x82A66BA0 0x82A65B80 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x82A66BA8 0x82A65B88 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x82A66BB0 0x82A65B90 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x82A66BB8 0x82A65B98 -0x1020 window 32                      manifest:nfscarbon_manifest.toml
+0x82A66BD0 0x82A65BB0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A66BD8 0x82A65BB8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A66BE8 0x82A65BC8 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A66C00 0x82A65BE0 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82A85160 0x82A84140 -0x1020 window 16                      manifest:nfscarbon_manifest.toml
+0x82B01090 0x82B00090 -0x1000 window 16                      hook:src/video_hook.cpp
+0x82B8C764 0x82B8C764 +0x0000 window 16                      const:src/frame_handoff_hook.cpp
+0x82C651C4 ?          no code (data or zero)                   const:src/frame_handoff_hook.cpp
+0x82C651E8 ?          no code (data or zero)                   const:src/render_mode_hook.cpp
+0x82C651EC ?          no code (data or zero)                   const:src/render_mode_hook.cpp
+0x82C651F0 ?          no code (data or zero)                   const:src/render_mode_hook.cpp
+0x82C651F4 ?          no code (data or zero)                   const:src/render_mode_hook.cpp
+0x82C65304 ?          no code (data or zero)                   const:src/render_mode_hook.cpp

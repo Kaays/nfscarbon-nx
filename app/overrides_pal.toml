@@ -1,9 +1,11 @@
 # nfscarbon-nx: code generator options for the Europe edition (see overrides.toml for what they do).
-#
-# Bring-up: the register-as-local options stay off. USA needs setjmp (0x8279D060 there) marked
-# share_registers for cr_as_local to be safe; once the Europe setjmp is found, copy the USA settings.
+# Same as USA; setjmp found by tools/map_edition.py (USA 0x8279D060).
 
-cr_as_local = false
+cr_as_local = true
 non_volatile_as_local = false
-xer_as_local = false
-ctr_as_local = false
+xer_as_local = true
+ctr_as_local = true
+
+[functions]
+# setjmp (USA 0x8279D060): share_registers so the jmp_buf gets the caller's cr.
+"0x8279C040" = { share_registers = true }
