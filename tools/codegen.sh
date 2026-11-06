@@ -31,6 +31,6 @@ ln -sfn "game_root_$REGION" "$ROOT/assets/game_root"
 echo "== codegen ($REGION: $GAME, $MANIFEST)"
 "$REXGLUE" codegen "$MANIFEST" > codegen.log 2>&1 || { echo "codegen failed, see app/codegen.log"; exit 1; }
 echo "== direct calls"
-"$PY" "$ROOT/tools/direct_calls.py"
+REGION=$REGION "$PY" "$ROOT/tools/direct_calls.py"
 echo "$REGION" > generated/REGION
 echo "done: app/generated/default ($REGION)"

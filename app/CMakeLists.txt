@@ -56,6 +56,15 @@ if(REXGLUE_PLATFORM_SWITCH)
     list(APPEND NFSCARBON_SOURCES src/ring_wait_hook.cpp)
 endif()
 
+# Edition (tools/build.sh REGION=...). The hooks listed in hooks_usa.txt name addresses of the USA
+# default.xex, so another edition builds without them until its own addresses are found.
+set(NFSCARBON_REGION "usa" CACHE STRING "Game edition this build is for (usa, pal, ...)")
+if(NOT NFSCARBON_REGION STREQUAL "usa")
+    file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/hooks_usa.txt" NFSCARBON_USA_HOOKS REGEX "^src/")
+    list(REMOVE_ITEM NFSCARBON_SOURCES ${NFSCARBON_USA_HOOKS})
+    message(STATUS "Edition ${NFSCARBON_REGION}: without the USA hooks (${NFSCARBON_USA_HOOKS})")
+endif()
+
 if(WIN32)
     add_executable(nfscarbon WIN32 ${NFSCARBON_SOURCES})
     target_link_options(nfscarbon PRIVATE "LINKER:/force:multiple")
@@ -63,7 +72,9 @@ else()
     add_executable(nfscarbon ${NFSCARBON_SOURCES})
 endif()
 # FFmpeg (built by the SDK) for the WMV3 video decoder.
-target_link_libraries(nfscarbon PRIVATE libavcodec libavutil)
+if(NFSCARBON_REGION STREQUAL "usa")
+    target_link_libraries(nfscarbon PRIVATE libavcodec libavutil)
+endif()
 
 # The Xenos emulation stays available as a fallback (nfscarbon_renderer = "xenos").
 rexglue_setup_target(nfscarbon GPU_PLUGINS xenos)
@@ -90,7 +101,6 @@ if(REXGLUE_PLATFORM_SWITCH)
     # The generated code and the sources must not change between the two.
     set(NFSCARBON_PGO "" CACHE STRING "Profile-guided optimization: empty, generate or use")
     # One profile per edition (their code differs): pgo_usa/, pgo_pal/, ... at the root of the repository.
-    set(NFSCARBON_REGION "usa" CACHE STRING "Game edition this build is for (usa, pal, ...)")
     get_filename_component(NFSCARBON_PGO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../pgo_${NFSCARBON_REGION}" ABSOLUTE)
     if(NFSCARBON_PGO STREQUAL "generate")
         # -fno-profile-values: libgcov's indirect-call profiler reads TLS with mrs tpidr_el0, which is 0

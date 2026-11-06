@@ -21,6 +21,7 @@ From nfs-carbon-recomp/tools/direct_calls.py, with the paths of this tree
 """
 
 import argparse
+import os
 import pathlib
 import re
 import sys
@@ -38,11 +39,23 @@ DIRECT = re.compile(r"__imp__" + FUNC + r"\(ctx, base\)")
 
 
 def hooked_addresses():
+    """sub_ names in the sources built for this edition (REGION, default usa; app/CMakeLists.txt)."""
+    region = os.environ.get("REGION", "usa")
+    skip = set()
+    if region != "usa":
+        listing = (ROOT / "hooks_usa.txt").read_text(encoding="utf-8").splitlines()
+        skip = {(ROOT / line.strip()).resolve() for line in listing if line.startswith("src/")}
     hooked = set()
     files = [p for d in HOOK_SOURCES if d.is_dir() for p in d.rglob("*")
-             if p.suffix in (".cpp", ".h", ".cc", ".hpp")]
-    files += list(ROOT.glob("*.toml"))
+             if p.suffix in (".cpp", ".h", ".cc", ".hpp") and p.resolve() not in skip]
+    if region == "usa":
+        files += [ROOT / "nfscarbon_manifest.toml", ROOT / "overrides.toml"]
+    else:
+        files += [ROOT / f"nfscarbon_manifest_{region}.toml", ROOT / f"overrides_{region}.toml"]
+    files += [ROOT / "nfscarbon.toml"]
     for path in files:
+        if not path.is_file():
+            continue
         hooked.update("sub_" + m.upper() for m in NAME.findall(
             path.read_text(encoding="utf-8", errors="ignore")))
     return hooked

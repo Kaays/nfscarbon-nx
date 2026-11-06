@@ -1,0 +1,19 @@
+# nfscarbon-nx: Europe edition, "Need for Speed - Carbon (Europe) (En,Nl,Sv,Da,Fi)"
+# default.xex SHA-1 90c2181d9f67612b017da1ce23b07d735e2d3f58, Media ID 573FDB37, version 0.0.0.4.
+# Used by REGION=pal bash tools/codegen.sh (assets/game_root is linked to assets/game_root_pal).
+#
+# Bring-up: no extra function entries yet (the USA ones are USA addresses). Functions the analysis
+# misses show up on the console in unregistered_targets.txt (app/src/dispatch_tolerance.cpp) and are
+# added to [entrypoint.functions] here.
+
+[project]
+name = "nfscarbon"
+sdk_version = "0.10.0"
+game_root = "../assets/game_root"
+
+[entrypoint]
+file_path = "../assets/game_root/default.xex"
+out_directory_path = "generated/default"
+includes = ["overrides_pal.toml"]
+
+[entrypoint.functions]
