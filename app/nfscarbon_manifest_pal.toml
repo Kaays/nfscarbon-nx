@@ -391,3 +391,34 @@ includes = ["overrides_pal.toml"]
 0x82189588 = {}  # usa 0x82189588
 0x821895A8 = {}  # usa 0x821895A8
 0x821895C8 = {}  # usa 0x821895C8
+# Hand-mapped from guest image dumps (2026-11-06):
+# - 20 dispatch stubs, USA 0x82189448-0x821896A8 = PAL 0x82189528-0x82189788 (+0xE0);
+#   the three thunks after them are in another order (USA 0x821896C8 addi -0x40 = PAL 0x821897B0).
+# - 54 thunks (addi r3; b), USA 0x8249B688-0x8249B830 = PAL 0x8249B9F0-0x8249BB98, reordered by the
+#   linker; paired by instruction and branch target (target delta +0x350).
+0x821895E8 = {}  # usa 0x82189508
+0x82189608 = {}  # usa 0x82189528
+0x82189628 = {}  # usa 0x82189548
+0x82189648 = {}  # usa 0x82189568
+0x82189668 = {}  # usa 0x82189588
+0x82189688 = {}  # usa 0x821895A8
+0x821896A8 = {}  # usa 0x821895C8
+0x821897B0 = {}  # usa 0x821896C8
+0x8249BA18 = {}  # usa 0x8249B690
+0x8249BA08 = {}  # usa 0x8249B698
+0x8249BB30 = {}  # usa 0x8249B6A8
+0x8249BA48 = {}  # usa 0x8249B6B8
+0x8249BB00 = {}  # usa 0x8249B6F0
+0x8249BB18 = {}  # usa 0x8249B718
+0x8249BB48 = {}  # usa 0x8249B768
+0x8249BB88 = {}  # usa 0x8249B7C0
+0x8249BB58 = {}  # usa 0x8249B7D0
+0x8249BAA8 = {}  # usa 0x8249B7F0
+0x8249BA58 = {}  # usa 0x8249B7F8
+0x8249BA30 = {}  # usa 0x8249B810
+0x8249BB50 = {}  # usa 0x8249B830
+# The four thunks of that table whose targets moved by another delta (one of them is USA 0x8249B7B8).
+0x8249B9F8 = {}
+0x8249BA40 = {}
+0x8249BA60 = {}
+0x8249BAC8 = {}
