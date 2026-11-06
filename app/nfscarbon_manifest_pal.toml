@@ -21,3 +21,16 @@ includes = ["overrides_pal.toml"]
 0x82321990 = {}  # b from 0x823003E8
 0x82A623E8 = {}  # b from 0x82A6321C
 0x82A65770 = {}  # b from 0x82A65BD4
+# Indirect call targets logged on the console (unregistered_targets.txt, first boot, 2026-11-06).
+# Skipping them hung the loading screen of career and races.
+0x821A3FC0 = {}
+0x821B2AD8 = {}
+0x822965A8 = {}
+0x822A95D0 = {}
+0x822FBBE0 = {}
+0x82322188 = {}
+0x823233D0 = {}
+0x823504F8 = {}
+0x8249BAC0 = {}
+0x824DAC58 = {}
+0x82641638 = {}

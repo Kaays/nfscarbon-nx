@@ -8,7 +8,11 @@
  *              See LICENSE file in the project root for full license text.
  */
 
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <limits>
+#include <vector>
 
 #include <rex/codegen/binary_view.h>
 #include <rex/logging.h>
@@ -100,6 +104,25 @@ BinaryView BinaryView::fromModule(const runtime::Module& module) {
 
   REXCODEGEN_DEBUG("BinaryView: loaded {} sections, base=0x{:08X}, size=0x{:X}",
                    view.sections_.size(), view.baseAddress_, view.imageSize_);
+
+  // nfscarbon-nx: REXGLUE_DUMP_IMAGE=<file> writes the loaded image (base .. base + size, sections
+  // filled in, the rest zero) so tools/map_edition.py can match one edition's addresses in another.
+  if (const char* dump = std::getenv("REXGLUE_DUMP_IMAGE"); dump && *dump) {
+    std::vector<uint8_t> image(view.imageSize_, 0);
+    for (const auto& section : view.sections_) {
+      if (section.baseAddress < view.baseAddress_) continue;
+      const uint32_t offset = section.baseAddress - view.baseAddress_;
+      if (offset >= image.size()) continue;
+      const size_t count = std::min<size_t>(section.size, image.size() - offset);
+      std::copy(section.data, section.data + count, image.begin() + offset);
+    }
+    if (FILE* f = std::fopen(dump, "wb")) {
+      std::fwrite(image.data(), 1, image.size(), f);
+      std::fclose(f);
+      REXCODEGEN_INFO("BinaryView: image written to {} (base 0x{:08X}, 0x{:X} bytes)", dump,
+                      view.baseAddress_, image.size());
+    }
+  }
 
   return view;
 }
