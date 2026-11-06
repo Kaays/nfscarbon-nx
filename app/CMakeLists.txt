@@ -86,10 +86,12 @@ if(REXGLUE_PLATFORM_SWITCH)
     # Profile-guided optimization in two builds from the same build folder (nfsmw-nx docs/toolchain.md):
     #   generate: instrumented, no LTO; the game writes the profile to sdmc:/switch/nfscarbon-nx/pgo every
     #             3 minutes (src/nfscarbon_pgo.cpp).
-    #   use:      the .gcda files copied to pgo/ at the root of the repository; LTO on.
+    #   use:      the .gcda files copied to pgo_<region>/ at the root of the repository; LTO on.
     # The generated code and the sources must not change between the two.
     set(NFSCARBON_PGO "" CACHE STRING "Profile-guided optimization: empty, generate or use")
-    get_filename_component(NFSCARBON_PGO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../pgo" ABSOLUTE)
+    # One profile per edition (their code differs): pgo_usa/, pgo_pal/, ... at the root of the repository.
+    set(NFSCARBON_REGION "usa" CACHE STRING "Game edition this build is for (usa, pal, ...)")
+    get_filename_component(NFSCARBON_PGO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../pgo_${NFSCARBON_REGION}" ABSOLUTE)
     if(NFSCARBON_PGO STREQUAL "generate")
         # -fno-profile-values: libgcov's indirect-call profiler reads TLS with mrs tpidr_el0, which is 0
         # on Horizon (libnx uses -mtp=soft): the instrumented build crashed before main in nfsmw-nx.

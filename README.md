@@ -82,11 +82,11 @@ Linux or WSL (Windows). Tested on WSL with Ubuntu. You need:
 | Step | Command | Time |
 |---|---|---|
 | 1. Third-party sources | `python3 tools/fetch_thirdparty.py` | a few minutes |
-| 2. Extract your game to `assets/game_root` (ignored by git) | `python3 tools/fase1_extraer.py path/to/game.iso -o assets/game_root` | a few minutes |
+| 2. Extract your game to `assets/game_root_usa` (ignored by git) | `python3 tools/fase1_extraer.py path/to/game.iso -o assets/game_root_usa` | a few minutes |
 | 3. NVK driver (Mesa, in Docker) → `out/mesa-sdk` | `bash tools/build_mesa_wsl.sh` | ~1 hour the first time |
 | 4. Code generator for your PC → `sdk/out/linux-amd64/rexglue` | `CLANG=clang CLANGXX=clang++ bash tools/build_rexglue_wsl.sh` | ~15 minutes |
 | 5. Translate the game to C++ → `app/generated/` (ignored by git) | `bash tools/codegen.sh` | ~5-7 minutes |
-| 6. Build the NRO → `app/out/switch/nfscarbon.nro` | `bash tools/build.sh ~/nfscarbon-nx/out/mesa-sdk 4` | 40-60 minutes |
+| 6. Build the NRO → `app/out/switch-usa/nfscarbon.nro` | `bash tools/build.sh ~/nfscarbon-nx/out/mesa-sdk 4` | 40-60 minutes |
 
 Notes:
 
@@ -97,8 +97,11 @@ Notes:
 - **Step 4**: the script's header lists the packages. `CLANG`/`CLANGXX` pick the compiler (by default `clang-20`).
 - **Step 5** must be run again after any change to `app/nfscarbon_manifest.toml`, `app/overrides.toml` or after
   adding a hook in `app/src`. At the end it prints `hooked functions: N; calls made direct: M`.
-- **Step 6** with `4` parallel jobs. More jobs need more RAM. The unstripped executable `app/out/switch/nfscarbon`
+- **Step 6** with `4` parallel jobs. More jobs need more RAM. The unstripped executable `app/out/switch-usa/nfscarbon`
   is kept for `tools/symbolize_profile.py`.
+- **Editions**: the folders are per edition (`assets/game_root_usa`, `pgo_usa/`, `app/out/switch-usa`). `REGION`
+  picks the edition for steps 5 and 6 (default `usa`, the only one supported so far); `tools/codegen.sh` links
+  `assets/game_root` to `game_root_<region>`, and `tools/build.sh` refuses generated code of another edition.
 
 ### Faster build with PGO (recommended)
 
@@ -108,7 +111,8 @@ not in the repository (it is only valid for the exact sources it was taken from)
 1. `PGO=generate bash tools/build.sh ~/nfscarbon-nx/out/mesa-sdk 4` builds an instrumented NRO (slower).
 2. Play it on the Switch for 15-30 minutes, including a busy race (Race Wars). The profile is written every
    3 minutes to `sdmc:/switch/nfscarbon-nx/pgo/`.
-3. Copy that `pgo/` folder from the SD card to the repository root (`~/nfscarbon-nx/pgo/*.gcda`).
+3. Copy the contents of that `pgo/` folder from the SD card to `pgo_usa/` at the repository root
+   (`~/nfscarbon-nx/pgo_usa/*.gcda`).
 4. `PGO=use bash tools/build.sh ~/nfscarbon-nx/out/mesa-sdk 4` builds the final NRO with the profile.
 
 Later builds keep the PGO mode of the build folder; `PGO=off` goes back to a plain build. After larger source
@@ -191,7 +195,7 @@ When something goes wrong, please [open an issue](../../issues/new/choose) with:
 - for a crash, the Atmosphère report from `sdmc:/atmosphere/crash_reports/`.
 
 To see where a thread spends its time, put an empty file `perfil_pilas.flag` in `logs/rex/`, play for a minute,
-and run `python3 tools/symbolize_profile.py rex_perfil.log app/out/switch/nfscarbon` on the PC with the same
+and run `python3 tools/symbolize_profile.py rex_perfil.log app/out/switch-usa/nfscarbon` on the PC with the same
 build. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Review changes before relying on them: corrections and pull requests are very welcome.

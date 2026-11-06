@@ -7,8 +7,8 @@ No dependencies: only the Python 3.8+ standard library.
 
 Typical usage:
     python tools/fase1_extraer.py "D:\\dumps\\NFSMW.iso" --listar
-    python tools/fase1_extraer.py "D:\\dumps\\NFSMW.iso" -o assets/game_root
-    python tools/fase1_extraer.py assets/game_root/default.xex --info
+    python tools/fase1_extraer.py "D:\\dumps\\NFSMW.iso" -o assets/game_root_usa
+    python tools/fase1_extraer.py assets/game_root_usa/default.xex --info
 
 What it does:
   1. Detects the offset of the game partition (XGD1 / XGD2 / XGD3 / raw).
@@ -380,8 +380,8 @@ def main():
         description="Extrae un ISO de Xbox 360 y vuelca la info del XEX.")
     p.add_argument("entrada", nargs="?", default=None,
                    help="ruta al .iso, o a un .xex si usas --info. Si se omite, busca un unico .iso en la carpeta del proyecto.")
-    p.add_argument("-o", "--salida", default="assets/game_root",
-                   help="carpeta destino de la extraccion (por defecto: assets/game_root)")
+    p.add_argument("-o", "--salida", default="assets/game_root_usa",
+                   help="carpeta destino de la extraccion (por defecto: assets/game_root_usa)")
     p.add_argument("--listar", action="store_true",
                    help="solo listar el contenido, sin extraer nada")
     p.add_argument("--solo-xex", action="store_true",
