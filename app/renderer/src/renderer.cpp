@@ -4,6 +4,9 @@
 #include "renderer.h"
 
 #include <algorithm>
+#if defined(__SWITCH__)
+#include <malloc.h>
+#endif
 #include <cstddef>
 #include <atomic>
 #include <chrono>
@@ -3177,6 +3180,16 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
           stats_.chunk_vertex_draws / f, stats_.pipelines_created, stats_.shaders_compiled,
           stats_.textures_uploaded, texture_bytes_ >> 20, render_target_bytes_ >> 20,
           arena_used_ >> 20, stats_.evicted);
+#if defined(__SWITCH__)
+      // Host heap (malloc): guest backing, Mesa, GPU memory and thread stacks all come out of it.
+      static double last_heap_log = 0.0;
+      if (now - last_heap_log >= 60.0) {
+        last_heap_log = now;
+        struct mallinfo mi = mallinfo();
+        REXGPU_INFO("[carbon-gpu] host heap: {} MiB taken, {} MiB of it free, {} MiB in use",
+                    size_t(mi.arena) >> 20, size_t(mi.fordblks) >> 20, size_t(mi.uordblks) >> 20);
+      }
+#endif
     }
     if (REXCVAR_GET(carbon_gpu_stats) && stats_.draws_skipped) {
       static const char* kNames[kSkipReasonCount] = {

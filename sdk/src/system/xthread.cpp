@@ -501,12 +501,21 @@ X_STATUS XThread::Create() {
   // nfscarbon-nx: a big host stack (16 MiB) comes out of the same heap as Mesa and the GPU memory. Late in
   // a session a 16 MiB block may no longer be free in one piece; a smaller stack is still far more than
   // the guest code needs (the guest stack is a few hundred KB at most), so try smaller before failing.
-  for (size_t stack : {16_MiB, 8_MiB, 4_MiB, 2_MiB}) {
+  // Host stack: 16 x the guest stack (recompiled frames are larger than PowerPC ones), 4-16 MiB. Every
+  // thread used to get 16 MiB: ~26 game threads held over 400 MiB of the heap, and late in a career
+  // session the heap ran out (thread creation and guest page commits failed together).
+  size_t wanted = std::clamp<size_t>((size_t(creation_params_.stack_size) * 16 + 1_MiB - 1) & ~(1_MiB - 1),
+                                     4_MiB, 16_MiB);
+  for (size_t stack : {wanted, size_t(4_MiB), size_t(2_MiB)}) {
+    if (stack > wanted) continue;
     params.stack_size = stack;
     thread_ = rex::thread::Thread::Create(params, body);
     if (thread_) {
-      if (stack != 16_MiB) {
-        REXSYS_WARN("XThread {}: host stack {} MiB (16 MiB not available)", thread_name_, stack >> 20);
+      REXSYS_INFO("XThread: host stack {} MiB for a {} KiB guest stack", stack >> 20,
+                  creation_params_.stack_size >> 10);
+      if (stack != wanted) {
+        REXSYS_WARN("XThread {}: host stack {} MiB ({} MiB not available)", thread_name_, stack >> 20,
+                    wanted >> 20);
       }
       break;
     }
