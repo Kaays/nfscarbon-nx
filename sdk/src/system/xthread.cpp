@@ -12,6 +12,10 @@
 #include <algorithm>
 #include <atomic>
 #include <cstring>
+#include <functional>
+#if defined(__SWITCH__)
+#include <malloc.h>
+#endif
 
 #include <fmt/format.h>
 
@@ -464,9 +468,8 @@ X_STATUS XThread::Create() {
   RetainHandle();
 
   rex::thread::Thread::CreationParameters params;
-  params.stack_size = 16_MiB;  // Allocate a big host stack.
   params.create_suspended = true;
-  thread_ = rex::thread::Thread::Create(params, [this]() {
+  std::function<void()> body = [this]() {
     rex::initialize_seh_thread();
 #if REX_PLATFORM_SWITCH
     RexSwitchSetCurrentThreadPriority(SwitchPriorityFor(guest_thread_, thread_name_));
@@ -494,7 +497,25 @@ X_STATUS XThread::Create() {
 
     // Release the self-reference to the thread.
     ReleaseHandle();
-  });
+  };
+  // nfscarbon-nx: a big host stack (16 MiB) comes out of the same heap as Mesa and the GPU memory. Late in
+  // a session a 16 MiB block may no longer be free in one piece; a smaller stack is still far more than
+  // the guest code needs (the guest stack is a few hundred KB at most), so try smaller before failing.
+  for (size_t stack : {16_MiB, 8_MiB, 4_MiB, 2_MiB}) {
+    params.stack_size = stack;
+    thread_ = rex::thread::Thread::Create(params, body);
+    if (thread_) {
+      if (stack != 16_MiB) {
+        REXSYS_WARN("XThread {}: host stack {} MiB (16 MiB not available)", thread_name_, stack >> 20);
+      }
+      break;
+    }
+#if REX_PLATFORM_SWITCH
+    struct mallinfo mi = mallinfo();
+    REXSYS_WARN("XThread {}: no host stack of {} MiB (heap: {} MiB taken, {} MiB free in it)",
+                thread_name_, stack >> 20, mi.arena >> 20, mi.fordblks >> 20);
+#endif
+  }
 
   if (!thread_) {
     // TODO(benvanik): translate error?
