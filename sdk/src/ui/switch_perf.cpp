@@ -63,6 +63,8 @@ const char* RexSwitchLogDir(void);
  */
 size_t RexGmCommittedBytes(void);
 size_t RexGmMappedBytes(void);
+size_t RexGmChunkCount(void);
+size_t RexGmViewMappingCount(void);
 /* 0 = sin probar, 1 = permisos (paginas vigiladas legibles), 2 = desmapeo. */
 int RexGmModoProteccion(void);
 Result __real_threadCreate(Thread* t, ThreadFunc entry, void* arg, void* stack_mem,
@@ -248,7 +250,8 @@ void LimiteDeMapeo(u64* usado_mb, u64* tope_mb, u64* proceso_mb, u64* total_mb) 
     *total_mb = v >> 20;
   }
   Handle reslimit = INVALID_HANDLE;
-  if (R_FAILED(svcGetInfo(&v, InfoType_ResourceLimit, CUR_PROCESS_HANDLE, 0))) {
+  // The resource limit is asked with INVALID_HANDLE (with the process handle it fails: the line read 0/0).
+  if (R_FAILED(svcGetInfo(&v, InfoType_ResourceLimit, INVALID_HANDLE, 0))) {
     return;
   }
   reslimit = static_cast<Handle>(v);
@@ -405,6 +408,31 @@ void Report(u64 elapsed_ticks, u64 tick_freq, u64 counters_last[kCounterCount],
                                               : "sin probar"),
                 double(counters_now[20] - counters_last[20]) / seconds,
                 double(counters_now[19] - counters_last[19]) / seconds);
+  {
+    // Kernel resources: a session of 2.5 h ended with thread creation and guest commits failing with
+    // 0xCE01 (kernel OutOfResource) while the heap still had room. These show which one runs out.
+    u64 sys_total = 0, sys_used = 0;
+    svcGetInfo(&sys_total, InfoType_SystemResourceSizeTotal, CUR_PROCESS_HANDLE, 0);
+    svcGetInfo(&sys_used, InfoType_SystemResourceSizeUsed, CUR_PROCESS_HANDLE, 0);
+    s64 hilos = 0, hilos_tope = 0, ev = 0, ev_tope = 0, ses = 0, ses_tope = 0;
+    u64 rl = 0;
+    if (R_SUCCEEDED(svcGetInfo(&rl, InfoType_ResourceLimit, INVALID_HANDLE, 0)) && rl) {
+      const Handle h = static_cast<Handle>(rl);
+      svcGetResourceLimitCurrentValue(&hilos, h, LimitableResource_Threads);
+      svcGetResourceLimitLimitValue(&hilos_tope, h, LimitableResource_Threads);
+      svcGetResourceLimitCurrentValue(&ev, h, LimitableResource_Events);
+      svcGetResourceLimitLimitValue(&ev_tope, h, LimitableResource_Events);
+      svcGetResourceLimitCurrentValue(&ses, h, LimitableResource_Sessions);
+      svcGetResourceLimitLimitValue(&ses_tope, h, LimitableResource_Sessions);
+      svcCloseHandle(h);
+    }
+    std::fprintf(f,
+                 "     kernel: recurso de sistema %llu/%llu KB | hilos %lld/%lld, eventos %lld/%lld, "
+                 "sesiones %lld/%lld | invitado: %zu trozos, %zu en vistas\n",
+                 (unsigned long long)(sys_used >> 10), (unsigned long long)(sys_total >> 10),
+                 (long long)hilos, (long long)hilos_tope, (long long)ev, (long long)ev_tope,
+                 (long long)ses, (long long)ses_tope, RexGmChunkCount(), RexGmViewMappingCount());
+  }
   // Work the game sends to the GPU, per presented frame. One screen is
   // 1280x720 = 921,600 pixels.
   const auto delta = [&](unsigned id) { return double(counters_now[id] - counters_last[id]); };

@@ -167,6 +167,10 @@ size_t RexGmCommittedBytes(void);
  */
 size_t RexGmMappedBytes(void);
 
+/* Committed chunks (each one a heap block and a code-memory alias) and chunk-into-view mappings. */
+size_t RexGmChunkCount(void);
+size_t RexGmViewMappingCount(void);
+
 /*
  * Tells whether watched pages are protected with permissions (readable) or by
  * unmapping (not readable). It is printed in the profile header to show which

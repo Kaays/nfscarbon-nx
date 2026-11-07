@@ -429,6 +429,18 @@ size_t RexGmMappedBytes(void) {
     return s.mapped;
 }
 
+size_t RexGmChunkCount(void) {
+    State& s = S();
+    std::lock_guard<std::mutex> lock(s.mutex);
+    return s.chunks.size();
+}
+
+size_t RexGmViewMappingCount(void) {
+    State& s = S();
+    std::lock_guard<std::mutex> lock(s.mutex);
+    return s.view_mapped.size();
+}
+
 int RexGmModoProteccion(void) {
     switch (g_solo_lectura) {
         case SoloLectura::kSi: return 1;
