@@ -490,8 +490,22 @@ bool RexGmCommit(size_t offset, size_t length, RexGmAccess access) {
     std::lock_guard<std::mutex> lock(s.mutex);
     if (!s.base) return false;
 
-    const size_t begin = AlignDown(offset, kPageSize);
-    const size_t end   = AlignUp(offset + length, kPageSize);
+    /*
+     * Commit in 64 KB granules, not page by page. Every chunk is a heap block, a code-memory alias and
+     * one mapping per view it is touched in, and each of those splits the kernel's memory blocks. The
+     * game commits and decommits small ranges all the time (stacks, heaps, video buffers); partial
+     * decommits leave fragments and the chunk count only grew (427 -> 705 in 25 minutes). After 2.5 h
+     * guest commits and thread creation failed with 0xCE01 (kernel OutOfResource) with heap to spare.
+     * Committing a little more than asked is harmless: those pages read as zero, and the game does not
+     * touch memory it has not committed.
+     */
+    constexpr size_t kGranule = 0x10000;
+    size_t limite = 0;
+    for (const View& v : s.views) limite = v.offset + v.length > limite ? v.offset + v.length : limite;
+    const size_t begin = AlignDown(offset, kGranule);
+    size_t end = AlignUp(offset + length, kGranule);
+    if (limite && end > limite) end = AlignUp(offset + length, kPageSize) > limite
+                                          ? AlignUp(offset + length, kPageSize) : limite;
 
     size_t cur = begin;
     while (cur < end) {
