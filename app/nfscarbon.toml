@@ -69,6 +69,12 @@ nfscarbon_mesa_env = ""
 nfscarbon_ring_wait = true
 nfscarbon_ring_wait_max_us = 1000
 
+# Guest page zero readable and writable. The game has assert traps that store to
+# address 0 when a pointer it expects is null (a police chase after a territory
+# race crashed on one, sub_825462A8 USA / sub_82546560 Europe). Protected, that
+# store ends the game; writable, the game carries on.
+protect_zero = false
+
 # Calls to game functions the recompiler missed are skipped and written to
 # unregistered_targets.txt next to the NRO (send that file with bug reports).
 nfscarbon_tolerate_unregistered_calls = true
