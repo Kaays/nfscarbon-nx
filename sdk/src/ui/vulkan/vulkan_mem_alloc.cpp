@@ -80,6 +80,15 @@ VmaAllocator CreateVmaAllocator(const VulkanDevice* const vulkan_device,
   if (externally_synchronized) {
     allocator_create_info.flags |= VMA_ALLOCATOR_CREATE_EXTERNALLY_SYNCHRONIZED_BIT;
   }
+#if defined(__SWITCH__)
+  // nfscarbon-nx: GPU memory on the Switch is ordinary heap memory (NVK takes it from the same malloc
+  // heap as the guest backing and the thread stacks). VMA's default 256 MiB blocks meant that a texture
+  // crossing a block boundary took another 256 MiB at once: the heap log showed +256/-264 MiB steps that
+  // stayed for minutes, and at the high points thread creation and guest page commits failed (the late
+  // career freezes). 32 MiB blocks waste at most 32 MiB; larger allocations (the vertex arena) get their
+  // own block.
+  allocator_create_info.preferredLargeHeapBlockSize = 32ull << 20;
+#endif
   allocator_create_info.physicalDevice = vulkan_device->physical_device();
   allocator_create_info.device = vulkan_device->device();
   allocator_create_info.pVulkanFunctions = &vma_vulkan_functions;
