@@ -71,7 +71,7 @@ nfscarbon_ring_wait_max_us = 1000
 
 # Guest page zero readable and writable. The game has assert traps that store to
 # address 0 when a pointer it expects is null (a police chase after a territory
-# race crashed on one, sub_825462A8 USA / sub_82546560 Europe). Protected, that
+# race crashed on one: USA 0x825462A8, Europe 0x82546560). Protected, that
 # store ends the game; writable, the game carries on.
 protect_zero = false
 
