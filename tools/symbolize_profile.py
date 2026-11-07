@@ -20,7 +20,7 @@ log = sys.argv[1]
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # The build leaves the unstripped executable as app/out/switch-usa/nfscarbon (no extension); the .stripped.elf
 # next to it has no symbols.
-elf = sys.argv[2] if len(sys.argv) > 2 else os.path.join(root, "app", "out", "switch", "nfscarbon")
+elf = sys.argv[2] if len(sys.argv) > 2 else os.path.join(root, "app", "out", "switch-usa", "nfscarbon")
 if not os.path.isfile(elf):
     raise SystemExit(f"ELF not found: {elf}")
 dkp = os.environ.get("DEVKITPRO", "/opt/devkitpro")
