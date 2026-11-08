@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = ROOT / "app"
-ADDR = re.compile(r"\b(sub_|0x)(8[0-9A-Fa-f]{7})(u?)\b")
+ADDR = re.compile(r"(?<![0-9A-Za-z])(sub_|0x)(8[0-9A-Fa-f]{7})(u?)\b")
 
 
 def load_map(path):

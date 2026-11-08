@@ -59,7 +59,7 @@ def usa_addresses():
         if not line.startswith("src/"):
             continue
         text = (APP / line).read_text(errors="ignore")
-        for m in re.finditer(r"\bsub_(8[0-9A-Fa-f]{7})\b", text):
+        for m in re.finditer(r"(?<![0-9A-Za-z])sub_(8[0-9A-Fa-f]{7})\b", text):
             found.setdefault(int(m.group(1), 16), f"hook:{line}")
         for m in re.finditer(r"\b0x(8[0-9A-Fa-f]{7})u?\b", text):
             found.setdefault(int(m.group(1), 16), f"const:{line}")
