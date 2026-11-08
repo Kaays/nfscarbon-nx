@@ -19,7 +19,11 @@
 #include <sys/stat.h>
 
 namespace {
-constexpr char kSdDir[] = "sdmc:/switch/nfscarbon-nx/pgo";
+// One folder per edition (CMake passes NFSCARBON_PGO_SD_DIR): pgo for usa, pgo_<region> otherwise.
+#ifndef NFSCARBON_PGO_SD_DIR
+#define NFSCARBON_PGO_SD_DIR "sdmc:/switch/nfscarbon-nx/pgo"
+#endif
+constexpr char kSdDir[] = NFSCARBON_PGO_SD_DIR;
 }
 
 extern "C" {
@@ -55,7 +59,7 @@ void PgoThread(void*) {
     __gcov_dump();
     __gcov_reset();
     const double ms = double(armTicksToNs(armGetSystemTick() - before)) / 1e6;
-    if (FILE* f = __real_fopen("sdmc:/switch/nfscarbon-nx/pgo/dumps.txt", "a")) {
+    if (FILE* f = __real_fopen(NFSCARBON_PGO_SD_DIR "/dumps.txt", "a")) {
       std::fprintf(f, "dump %d: %.0f ms\n", dump, ms);
       std::fclose(f);
     }

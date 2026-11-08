@@ -112,6 +112,10 @@ if(REXGLUE_PLATFORM_SWITCH)
         target_link_options(nfscarbon PRIVATE -fprofile-generate -Wl,--wrap=fopen)
         target_compile_definitions(nfscarbon PRIVATE NFSCARBON_PGO_GENERATE=1
                                    "NFSCARBON_PGO_DIR=\"${NFSCARBON_PGO_DIR}\"")
+        if(NOT NFSCARBON_REGION STREQUAL "usa")
+            target_compile_definitions(nfscarbon PRIVATE
+                "NFSCARBON_PGO_SD_DIR=\"sdmc:/switch/nfscarbon-nx/pgo_${NFSCARBON_REGION}\"")
+        endif()
         set(NFSCARBON_LTO OFF)
     elseif(NFSCARBON_PGO STREQUAL "use")
         # -fprofile-correction: counters updated by several threads without synchronization come out
