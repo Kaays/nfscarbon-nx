@@ -222,14 +222,14 @@ Two editions, each with its own NRO. Both are discs without title update.
 | `default.xex` SHA-1 | `75ed29cfde2af689fb4f0615d743c07cab31b9da` | `90c2181d9f67612b017da1ce23b07d735e2d3f58` |
 | NRO | `nfscarbon.nro` | `nfscarbon-pal.nro` |
 
-**Europe**: its code is the same build of the game with small changes (functions
-moved by up to 4 KB), so its manifest and all the USA hooks were carried over by matching the code of the two
-images (`tools/map_edition.py`). It has been played for several hours (career, all race types, the three first
-bosses) and runs at about the same speed as USA: 28 FPS median, 20-26 FPS in the heaviest scenes (4000-5600 draws,
-crowded police chases), with the fourth core and a profile-guided build. The game asks for the language at the
-first start.
+**Europe** is the first edition added after USA, and the one the multi-edition support was built and tested
+with: its code is the same build of the game with small changes (functions moved by up to 4 KB), so the USA
+function list and all the USA hooks were carried over by matching the code of the two images
+(`tools/map_edition.py`). It runs well: several hours of play (career, all race types, the first three bosses) at
+about the same speed as USA, 28 FPS median and 20-26 FPS in the heaviest scenes (4000-5600 draws, crowded police
+chases), with the fourth core and a profile-guided build. The game asks for the language at the first start.
 
-**More editions are planned**, each as its own build: the other European discs (French, German, Italian, Spanish),
+**The other editions follow soon**, each as its own build, the same way: the other European discs (French, German, Italian, Spanish),
 Japan, and the Collector's Editions. A disc whose `default.xex` has the same SHA-1 as one of the tables above
 already works with that NRO.
 
