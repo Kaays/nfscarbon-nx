@@ -57,9 +57,9 @@ rate, broken-up sound). Use an overclock (sys-clk or similar).
 
 ## Install (prebuilt NRO)
 
-1. Download the NRO for your edition (`nfscarbon.nro` for USA, `nfscarbon-pal.nro` for Europe) and
-   `nfscarbon.toml` from the [Releases](../../releases) page. The Europe NRO only runs the Europe disc and the USA
-   NRO only the USA disc.
+1. Download the archive for your edition from the [Releases](../../releases) page (USA or Europe). Each one holds
+   `nfscarbon.nro` and `nfscarbon.toml`. The Europe NRO only runs the Europe disc and the USA NRO only the USA
+   disc.
 2. Put them on the SD card with the files of your disc:
 
    ```text
@@ -220,7 +220,6 @@ Two editions, each with its own NRO. Both are discs without title update.
 | Media ID | `51D2B53F` | `573FDB37` |
 | `default.xex` version | 0.0.0.1 | 0.0.0.4 |
 | `default.xex` SHA-1 | `75ed29cfde2af689fb4f0615d743c07cab31b9da` | `90c2181d9f67612b017da1ce23b07d735e2d3f58` |
-| NRO | `nfscarbon.nro` | `nfscarbon-pal.nro` |
 
 **Europe** is the first edition added after USA, and the one the multi-edition support was built and tested
 with: its code is the same build of the game with small changes (functions moved by up to 4 KB), so the USA
