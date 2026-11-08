@@ -35,7 +35,7 @@ includes = ["overrides_pal.toml"]
 0x824DAC58 = {}
 0x82641638 = {}
 
-# Mapped from the USA manifest by tools/map_edition.py (app/map_usa_to_pal.txt): the functions the USA
+# Mapped from the USA manifest by tools/map_edition.py (app/generated/map_usa_to_pal.txt, written by codegen.sh): the functions the USA
 # analysis missed, found here by their instructions. Left out: matches that were not unique.
 0x8211DF18 = {}  # usa 0x8211DF18
 0x82164290 = {}  # usa 0x821641C8

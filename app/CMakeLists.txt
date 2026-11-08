@@ -62,7 +62,10 @@ set(NFSCARBON_REGION "usa" CACHE STRING "Game edition this build is for (usa, pa
 if(NOT NFSCARBON_REGION STREQUAL "usa")
     file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/hooks_usa.txt" NFSCARBON_USA_HOOKS REGEX "^src/")
     list(REMOVE_ITEM NFSCARBON_SOURCES ${NFSCARBON_USA_HOOKS})
-    message(STATUS "Edition ${NFSCARBON_REGION}: without the USA hooks (${NFSCARBON_USA_HOOKS})")
+    # The same hooks translated to this edition's addresses (tools/region_sources.py, run by codegen.sh).
+    file(GLOB NFSCARBON_REGION_HOOKS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src_${NFSCARBON_REGION}/*.cpp")
+    list(APPEND NFSCARBON_SOURCES ${NFSCARBON_REGION_HOOKS})
+    message(STATUS "Edition ${NFSCARBON_REGION}: hooks from src_${NFSCARBON_REGION}/ (${NFSCARBON_REGION_HOOKS})")
 endif()
 
 if(WIN32)
@@ -72,9 +75,7 @@ else()
     add_executable(nfscarbon ${NFSCARBON_SOURCES})
 endif()
 # FFmpeg (built by the SDK) for the WMV3 video decoder.
-if(NFSCARBON_REGION STREQUAL "usa")
-    target_link_libraries(nfscarbon PRIVATE libavcodec libavutil)
-endif()
+target_link_libraries(nfscarbon PRIVATE libavcodec libavutil)
 
 # The Xenos emulation stays available as a fallback (nfscarbon_renderer = "xenos").
 rexglue_setup_target(nfscarbon GPU_PLUGINS xenos)

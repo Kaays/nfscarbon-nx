@@ -12,7 +12,7 @@ Addresses mapped: the hand-declared functions of app/nfscarbon_manifest.toml and
 every sub_8XXXXXXX / 0x8XXXXXXX named in the USA-only hook sources (app/hooks_usa.txt).
 
     python3 tools/map_edition.py --region pal
-        -> app/map_usa_to_pal.txt (one line per address: usa, other, how it was found)
+        -> app/generated/map_usa_to_pal.txt (one line per address: usa, other, how it was found)
 
 Lines marked "?" were not found uniquely and need a look by hand.
 """
@@ -105,20 +105,74 @@ def find(usa_n, other_n, addr, expected_delta):
     return None, "not found"
 
 
+def data_refs(words, d):
+    """(lis index, use index) pairs that build address d: lis rX,hi ... addi/load/store rY,lo(rX)."""
+    hi = ((d + 0x8000) >> 16) & 0xFFFF
+    lis = np.nonzero(((words & 0xFC1F0000) == 0x3C000000) & ((words & 0xFFFF) == hi))[0]
+    out = []
+    for i in lis:
+        rd = (int(words[i]) >> 21) & 31
+        for j in range(i + 1, min(i + 24, len(words))):
+            w = int(words[j])
+            op = w >> 26
+            if op == 14 or 32 <= op <= 55:
+                if (w >> 16) & 31 == rd:
+                    lo = w & 0xFFFF
+                    if lo & 0x8000:
+                        lo -= 0x10000
+                    if ((hi << 16) + lo) & 0xFFFFFFFF == d:
+                        out.append((int(i), j))
+                    break
+            if op in (15,) and (w >> 21) & 31 == rd:
+                break  # rX reloaded
+    return out
+
+
+def map_data(usa_w, usa_n, other_w, other_n, d, code_delta):
+    """Data address d in the other image, from the code that references it (votes of all references)."""
+    votes = {}
+    refs = data_refs(usa_w, d)
+    for li, ui in refs[:12]:
+        a = BASE + li * 4
+        start = max(0, a - 16)
+        other, _ = find(usa_n, other_n, start, code_delta(a))
+        if other is None:
+            continue
+        oi = (other - BASE) // 4 + (li - (start - BASE) // 4)
+        oj = oi + (ui - li)
+        if oj >= len(other_w):
+            continue
+        wl, wu = int(other_w[oi]), int(other_w[oj])
+        if (wl & 0xFFFF0000) != (int(usa_w[li]) & 0xFFFF0000) or (wu & 0xFFFF0000) != (int(usa_w[ui]) & 0xFFFF0000):
+            continue
+        lo = wu & 0xFFFF
+        if lo & 0x8000:
+            lo -= 0x10000
+        dd = (((wl & 0xFFFF) << 16) + lo) & 0xFFFFFFFF
+        votes[dd] = votes.get(dd, 0) + 1
+    if not votes:
+        return None, f"data: {len(refs)} refs, none mapped"
+    best = max(votes, key=votes.get)
+    n = sum(votes.values())
+    if votes[best] * 2 <= n:
+        return None, f"data: refs disagree {votes}"
+    return best, f"data refs {votes[best]}/{n}"
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--region", required=True, help="other edition (pal, ...)")
     ap.add_argument("--usa", default=str(ROOT / "assets/guest_image_usa.bin"))
     ap.add_argument("--other", help="default: assets/guest_image_<region>.bin")
-    ap.add_argument("-o", "--output", help="default: app/map_usa_to_<region>.txt")
+    ap.add_argument("-o", "--output", help="default: app/generated/map_usa_to_<region>.txt")
     args = ap.parse_args()
     other_path = Path(args.other or ROOT / f"assets/guest_image_{args.region}.bin")
     for p in (Path(args.usa), other_path):
         if not p.is_file():
             sys.exit(f"{p} not found: run tools/codegen.sh for that region first (it writes the image)")
 
-    _, usa_n = load(args.usa)
-    _, other_n = load(other_path)
+    usa_w, usa_n = load(args.usa)
+    other_w, other_n = load(other_path)
     size = len(usa_n) * 4
     addrs = {a: w for a, w in usa_addresses().items() if a % 4 == 0 and BASE <= a < BASE + size}
 
@@ -136,7 +190,30 @@ def main():
         if r[0] is not None:
             result[a] = (r[0], r[1] + f", near delta {delta:+#x}")
 
-    out = Path(args.output or APP / f"map_usa_to_{args.region}.txt")
+    # Data addresses (constants named in the hooks): from the code that references them. Code that
+    # matches by instructions says nothing about data, so these replace the window result when found.
+    known = sorted((a, r[0] - a) for a, r in result.items() if r[0] is not None and addrs[a].startswith(("manifest", "hook")))
+    keys = [k for k, _ in known]
+
+    def code_delta(a):
+        if not known:
+            return 0
+        j = min(bisect.bisect_left(keys, a), len(keys) - 1)
+        return known[j][1]
+
+    for a in sorted(addrs):
+        if not addrs[a].startswith("const"):
+            continue
+        r = map_data(usa_w, usa_n, other_w, other_n, a, code_delta)
+        if r[0] is not None:
+            result[a] = r
+        elif result[a][0] is not None:
+            result[a] = (result[a][0], result[a][1] + f" ({r[1]})")
+        else:
+            result[a] = (None, r[1])
+
+    out = Path(args.output or APP / "generated" / f"map_usa_to_{args.region}.txt")
+    out.parent.mkdir(parents=True, exist_ok=True)
     ok = 0
     with out.open("w") as f:
         f.write(f"# usa -> {args.region}: {len(addrs)} addresses (tools/map_edition.py)\n")

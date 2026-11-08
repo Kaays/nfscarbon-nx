@@ -46,7 +46,8 @@ def hooked_addresses():
         listing = (ROOT / "hooks_usa.txt").read_text(encoding="utf-8").splitlines()
         skip = {(ROOT / line.strip()).resolve() for line in listing if line.startswith("src/")}
     hooked = set()
-    files = [p for d in HOOK_SOURCES if d.is_dir() for p in d.rglob("*")
+    dirs = HOOK_SOURCES + ([ROOT / f"src_{region}"] if region != "usa" else [])
+    files = [p for d in dirs if d.is_dir() for p in d.rglob("*")
              if p.suffix in (".cpp", ".h", ".cc", ".hpp") and p.resolve() not in skip]
     if region == "usa":
         files += [ROOT / "nfscarbon_manifest.toml", ROOT / "overrides.toml"]

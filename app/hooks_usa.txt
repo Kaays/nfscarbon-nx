@@ -1,6 +1,8 @@
 # Sources whose hooks name game addresses of the USA default.xex (sub_8XXXXXXX / 0x8XXXXXXX).
-# Only built for REGION=usa (app/CMakeLists.txt) and only counted as hooks by tools/direct_calls.py for usa.
-# Another edition gets them back one by one, as its addresses are found (tools/find_fingerprints.py).
+# Built as they are only for REGION=usa (app/CMakeLists.txt).
+# For another edition, tools/codegen.sh writes them translated to its addresses into app/src_<region>/
+# (tools/map_edition.py finds the addresses, tools/region_sources.py rewrites the sources); a source with
+# an address not found there is left out and its hooks stay off for that edition.
 src/audio_native.cpp
 src/audio_server_hook.cpp
 src/audio_thread_hook.cpp

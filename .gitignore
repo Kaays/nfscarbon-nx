@@ -13,6 +13,7 @@ assets/
 
 # --- Generated from the game --------------------------------------------------
 app/generated/
+app/src_*/
 app/unregistered_targets.txt
 
 # --- Build output -------------------------------------------------------------

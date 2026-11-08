@@ -30,6 +30,17 @@ fi
 ln -sfn "game_root_$REGION" "$ROOT/assets/game_root"
 echo "== codegen ($REGION: $GAME, $MANIFEST)"
 REXGLUE_DUMP_IMAGE="$ROOT/assets/guest_image_$REGION.bin" "$REXGLUE" codegen "$MANIFEST" > codegen.log 2>&1 || { echo "codegen failed, see app/codegen.log"; exit 1; }
+if [ "$REGION" != usa ]; then
+  # The USA hooks, translated to this edition's addresses (app/src_<region>/).
+  if [ -f "$ROOT/assets/guest_image_usa.bin" ]; then
+    echo "== hook addresses (usa -> $REGION)"
+    "$PY" "$ROOT/tools/map_edition.py" --region "$REGION"
+    "$PY" "$ROOT/tools/region_sources.py" --region "$REGION"
+  else
+    echo "== no assets/guest_image_usa.bin (run tools/codegen.sh for usa once): $REGION builds without hooks"
+    rm -rf "$APP/src_$REGION"
+  fi
+fi
 echo "== direct calls"
 REGION=$REGION "$PY" "$ROOT/tools/direct_calls.py"
 echo "$REGION" > generated/REGION
