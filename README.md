@@ -16,8 +16,9 @@ native Vulkan renderer running on NVK (Mesa).
 > **Playable, with an overclock.** The game boots, the menus, career, cutscenes and races all work, with sound and
 > videos. It **needs an overclock**: at the Switch's stock clocks it does not run well. On the overclock we play
 > with (CPU 1683 / GPU 844 / RAM 2133 MHz) and the fourth CPU core enabled, it holds 28-30 FPS in races and only
-> dips to 24-27 FPS for a few seconds at the start of Race Wars, with clean sound. Latest version: see
-> [Releases](../../releases).
+> dips to 24-27 FPS for a few seconds at the start of Race Wars, with clean sound. Long career sessions (2.5 h and
+> more in our tests) run without freezes. Editions: **USA**, and **Europe** as a first, experimental build (see
+> [Edition](#edition)). Latest version: see [Releases](../../releases).
 
 ## Where it stands
 
@@ -44,17 +45,22 @@ rate, broken-up sound). Use an overclock (sys-clk or similar).
 - **A short freeze when the player takes control** at the start of a race.
 - **The first race stutters** while it compiles graphics pipelines. They are saved on the SD card
   (`cache/carbon_gpu`), and later sessions start smoothly.
-- **Only the USA edition** is supported (see [Edition](#edition)).
+- **Rare crashes in police chases**: twice in the Europe build (once at heat level 1, once in a heavy chase), the
+  game found an object it expects missing. The same code is in the USA build; cause not found yet.
+- **Neville's garage cutscene** at the start of the career (Europe build): Neville is hidden at first, as if
+  something stood in front of him. Later cutscenes are fine.
 
 ## What you need
 
 - A Switch that can run homebrew (custom firmware, Atmosphère).
-- **Your own copy** of the Xbox 360 game, USA edition: a disc image (`.iso`) or the extracted disc with its
-  `default.xex`. No game files (graphics, sound, video, data) are included here or in the releases.
+- **Your own copy** of the Xbox 360 game, USA or Europe edition (see [Edition](#edition)): a disc image (`.iso`) or
+  the extracted disc with its `default.xex`. No game files (graphics, sound, video, data) are included here or in the releases.
 
 ## Install (prebuilt NRO)
 
-1. Download `nfscarbon.nro` and `nfscarbon.toml` from the [Releases](../../releases) page.
+1. Download the NRO for your edition (`nfscarbon.nro` for USA, `nfscarbon-pal.nro` for Europe) and
+   `nfscarbon.toml` from the [Releases](../../releases) page. The Europe NRO only runs the Europe disc and the USA
+   NRO only the USA disc.
 2. Put them on the SD card with the files of your disc:
 
    ```text
@@ -69,7 +75,9 @@ rate, broken-up sound). Use an overclock (sys-clk or similar).
 3. Launch it with **title takeover** (hold **R** while starting any installed game) or with a forwarder that uses a
    **39-bit address space**. Album (applet) mode does not give enough memory.
 
-Logs are written to `sdmc:/switch/nfscarbon-nx/logs/`. Saves go to `nfscarbon/` next to the NRO.
+Any folder works: the game, saves (`nfscarbon/`), logs (`logs/`) and the pipeline cache are all found next to
+the NRO. To keep both editions, use one folder each (for example `nfscarbon-nx-usa/` and `nfscarbon-nx-pal/`,
+each with its NRO, toml and `game_root/`) and one forwarder each.
 
 ## Build from source
 
@@ -99,9 +107,11 @@ Notes:
   adding a hook in `app/src`. At the end it prints `hooked functions: N; calls made direct: M`.
 - **Step 6** with `4` parallel jobs. More jobs need more RAM. The unstripped executable `app/out/switch-usa/nfscarbon`
   is kept for `tools/symbolize_profile.py`.
-- **Editions**: the folders are per edition (`assets/game_root_usa`, `pgo_usa/`, `app/out/switch-usa`). `REGION`
-  picks the edition for steps 5 and 6 (default `usa`, the only one supported so far); `tools/codegen.sh` links
-  `assets/game_root` to `game_root_<region>`, and `tools/build.sh` refuses generated code of another edition.
+- **Editions**: the folders are per edition (`assets/game_root_<region>`, `pgo_<region>/`, `app/out/switch-<region>`).
+  `REGION` picks the edition for steps 5 and 6 (`usa` by default, or `pal`). For `pal`, run step 5 for `usa` once
+  first: the code generator saves each edition's image (`assets/guest_image_<region>.bin`), and `tools/codegen.sh`
+  then finds the USA hook addresses in the Europe code (`tools/map_edition.py`) and writes the hooks translated
+  for it (`app/src_pal/`, `tools/region_sources.py`). `tools/build.sh` refuses generated code of another edition.
 
 ### Faster build with PGO (recommended)
 
@@ -110,7 +120,7 @@ not in the repository (it is only valid for the exact sources it was taken from)
 
 1. `PGO=generate bash tools/build.sh ~/nfscarbon-nx/out/mesa-sdk 4` builds an instrumented NRO (slower).
 2. Play it on the Switch for 15-30 minutes, including a busy race (Race Wars). The profile is written every
-   3 minutes to `sdmc:/switch/nfscarbon-nx/pgo/`.
+   3 minutes to `sdmc:/switch/nfscarbon-nx/pgo/` (`pgo_<region>/` for another edition).
 3. Copy the contents of that `pgo/` folder from the SD card to `pgo_usa/` at the repository root
    (`~/nfscarbon-nx/pgo_usa/*.gcda`).
 4. `PGO=use bash tools/build.sh ~/nfscarbon-nx/out/mesa-sdk 4` builds the final NRO with the profile.
@@ -202,16 +212,27 @@ Review changes before relying on them: corrections and pull requests are very we
 
 ## Edition
 
-Only the **USA (NTSC-U) disc version, without title update**: `Need for Speed - Carbon (USA) (En,Es)`.
+Two editions, each with its own NRO. Both are discs without title update.
 
-| | |
-|---|---|
-| Title ID | `454107EC` |
-| Media ID | `51D2B53F` |
-| `default.xex` SHA-1 | `75ed29cfde2af689fb4f0615d743c07cab31b9da` |
+| | USA | Europe (experimental) |
+|---|---|---|
+| Disc | `Need for Speed - Carbon (USA) (En,Es)` | `Need for Speed - Carbon (Europe) (En,Nl,Sv,Da,Fi)` |
+| Title ID | `454107EC` | `454107EC` |
+| Media ID | `51D2B53F` | `573FDB37` |
+| `default.xex` version | 0.0.0.1 | 0.0.0.4 |
+| `default.xex` SHA-1 | `75ed29cfde2af689fb4f0615d743c07cab31b9da` | `90c2181d9f67612b017da1ce23b07d735e2d3f58` |
+| NRO | `nfscarbon.nro` | `nfscarbon-pal.nro` |
 
-The Europe edition (`(En,Nl,Sv,Da,Fi)`, Media ID `573FDB37`) has different code addresses. It would need its own
-manifest and hook addresses (`tools/find_fingerprints.py` helps), as nfsmw-nx does per edition.
+**Europe** is a first, experimental build. Its code is the same build of the game with small changes (functions
+moved by up to 4 KB), so its manifest and all the USA hooks were carried over by matching the code of the two
+images (`tools/map_edition.py`). It has been played for several hours (career, all race types, the three first
+bosses) and runs at about the same speed as USA: 28 FPS median, 20-26 FPS in the heaviest scenes (4000-5600 draws,
+crowded police chases), with the fourth core and a profile-guided build. It has had less testing than USA:
+please report what you find, with the logs. The game asks for the language at the first start.
+
+**More editions are planned**, each as its own build: the other European discs (French, German, Italian, Spanish),
+Japan, and the Collector's Editions. A disc whose `default.xex` has the same SHA-1 as one of the tables above
+already works with that NRO.
 
 ## Credits
 
