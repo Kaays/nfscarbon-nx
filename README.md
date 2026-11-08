@@ -17,8 +17,7 @@ native Vulkan renderer running on NVK (Mesa).
 > videos. It **needs an overclock**: at the Switch's stock clocks it does not run well. On the overclock we play
 > with (CPU 1683 / GPU 844 / RAM 2133 MHz) and the fourth CPU core enabled, it holds 28-30 FPS in races and only
 > dips to 24-27 FPS for a few seconds at the start of Race Wars, with clean sound. Long career sessions (2.5 h and
-> more in our tests) run without freezes. Editions: **USA**, and **Europe** as a first, experimental build (see
-> [Edition](#edition)). Latest version: see [Releases](../../releases).
+> more in our tests) run without freezes. Editions: **USA** and **Europe** (see [Edition](#edition)). Latest version: see [Releases](../../releases).
 
 ## Where it stands
 
@@ -214,7 +213,7 @@ Review changes before relying on them: corrections and pull requests are very we
 
 Two editions, each with its own NRO. Both are discs without title update.
 
-| | USA | Europe (experimental) |
+| | USA | Europe |
 |---|---|---|
 | Disc | `Need for Speed - Carbon (USA) (En,Es)` | `Need for Speed - Carbon (Europe) (En,Nl,Sv,Da,Fi)` |
 | Title ID | `454107EC` | `454107EC` |
@@ -223,12 +222,12 @@ Two editions, each with its own NRO. Both are discs without title update.
 | `default.xex` SHA-1 | `75ed29cfde2af689fb4f0615d743c07cab31b9da` | `90c2181d9f67612b017da1ce23b07d735e2d3f58` |
 | NRO | `nfscarbon.nro` | `nfscarbon-pal.nro` |
 
-**Europe** is a first, experimental build. Its code is the same build of the game with small changes (functions
+**Europe**: its code is the same build of the game with small changes (functions
 moved by up to 4 KB), so its manifest and all the USA hooks were carried over by matching the code of the two
 images (`tools/map_edition.py`). It has been played for several hours (career, all race types, the three first
 bosses) and runs at about the same speed as USA: 28 FPS median, 20-26 FPS in the heaviest scenes (4000-5600 draws,
-crowded police chases), with the fourth core and a profile-guided build. It has had less testing than USA:
-please report what you find, with the logs. The game asks for the language at the first start.
+crowded police chases), with the fourth core and a profile-guided build. The game asks for the language at the
+first start.
 
 **More editions are planned**, each as its own build: the other European discs (French, German, Italian, Spanish),
 Japan, and the Collector's Editions. A disc whose `default.xex` has the same SHA-1 as one of the tables above
