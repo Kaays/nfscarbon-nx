@@ -54,6 +54,7 @@ Thread g_pgo_thread;
 void PgoThread(void*) {
   for (int dump = 1;; ++dump) {
     svcSleepThread(180LL * 1000 * 1000 * 1000);
+    mkdir("sdmc:/switch/nfscarbon-nx", 0777);  // may not exist when the NRO lives in another folder
     mkdir(kSdDir, 0777);
     const u64 before = armGetSystemTick();
     __gcov_dump();
