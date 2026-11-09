@@ -66,6 +66,17 @@ def usa_addresses():
     return found
 
 
+def edition_addresses(region):
+    """Hand-declared functions of another edition's manifest (to map one edition to the next)."""
+    found = {}
+    for name in (f"nfscarbon_manifest_{region}.toml", f"overrides_{region}.toml"):
+        path = APP / name
+        if path.is_file():
+            for m in re.finditer(r'^\s*"?(0x8[0-9A-Fa-f]{7})"?\s*=', path.read_text(), re.M):
+                found.setdefault(int(m.group(1), 16), f"manifest:{name}")
+    return found
+
+
 def find(usa_n, other_n, addr, expected_delta):
     """Address in the other image whose instructions match those at addr (USA), or None."""
     i = (addr - BASE) // 4
@@ -162,10 +173,13 @@ def map_data(usa_w, usa_n, other_w, other_n, d, code_delta):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--region", required=True, help="other edition (pal, ...)")
-    ap.add_argument("--usa", default=str(ROOT / "assets/guest_image_usa.bin"))
+    ap.add_argument("--from", dest="source", default="usa",
+                    help="edition to map from (default usa: manifest and hooks; another: its manifest)")
+    ap.add_argument("--usa", help="image of the source edition (default assets/guest_image_<from>.bin)")
     ap.add_argument("--other", help="default: assets/guest_image_<region>.bin")
-    ap.add_argument("-o", "--output", help="default: app/generated/map_usa_to_<region>.txt")
+    ap.add_argument("-o", "--output", help="default: app/generated/map_<from>_to_<region>.txt")
     args = ap.parse_args()
+    args.usa = args.usa or str(ROOT / f"assets/guest_image_{args.source}.bin")
     other_path = Path(args.other or ROOT / f"assets/guest_image_{args.region}.bin")
     for p in (Path(args.usa), other_path):
         if not p.is_file():
@@ -174,7 +188,8 @@ def main():
     usa_w, usa_n = load(args.usa)
     other_w, other_n = load(other_path)
     size = len(usa_n) * 4
-    addrs = {a: w for a, w in usa_addresses().items() if a % 4 == 0 and BASE <= a < BASE + size}
+    source_addrs = usa_addresses() if args.source == "usa" else edition_addresses(args.source)
+    addrs = {a: w for a, w in source_addrs.items() if a % 4 == 0 and BASE <= a < BASE + size}
 
     # First pass with no expected offset; then again with the offset of the nearest mapped neighbours,
     # which settles most of the ambiguous ones.
@@ -212,11 +227,11 @@ def main():
         else:
             result[a] = (None, r[1])
 
-    out = Path(args.output or APP / "generated" / f"map_usa_to_{args.region}.txt")
+    out = Path(args.output or APP / "generated" / f"map_{args.source}_to_{args.region}.txt")
     out.parent.mkdir(parents=True, exist_ok=True)
     ok = 0
     with out.open("w") as f:
-        f.write(f"# usa -> {args.region}: {len(addrs)} addresses (tools/map_edition.py)\n")
+        f.write(f"# {args.source} -> {args.region}: {len(addrs)} addresses (tools/map_edition.py)\n")
         for a in sorted(addrs):
             other, how = result[a]
             if other is None:
