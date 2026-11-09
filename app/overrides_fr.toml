@@ -1,0 +1,27 @@
+# nfscarbon-nx: code generator options for the fr edition (the same code as pal2) (see overrides.toml for what they do).
+# setjmp found by tools/make_edition_manifest.py (usa 0x8279D060).
+
+cr_as_local = true
+non_volatile_as_local = false
+xer_as_local = true
+ctr_as_local = true
+
+[functions]
+# setjmp: share_registers so the jmp_buf gets the caller's cr.
+"0x8279BFB0" = { share_registers = true }
+
+# 0x827CFDA8 (usa 0x827D0E58) holds two switch jump tables. Here the first table lands on
+# 0x827D0000 and the scanner does not take it, so it cut the function there and the
+# switch targets were left unresolved (console: first video). Its bounds and both tables
+# by hand; the next function starts at 0x827D0300 (usa 0x827D13B0).
+"0x827CFDA8" = { end = 0x827D0300 }
+
+[[switch_tables]]
+address = 0x827CFFFC
+register = 11
+labels = [0x827D0010, 0x827D001C, 0x827D0028, 0x827D0010]
+
+[[switch_tables]]
+address = 0x827D01B8
+register = 11
+labels = [0x827D01CC, 0x827D01E4, 0x827D020C, 0x827D01CC]
