@@ -1,0 +1,11 @@
+# nfscarbon-nx: code generator options for the pal2 edition (see overrides.toml for what they do).
+# setjmp found by tools/make_edition_manifest.py (usa 0x8279D060).
+
+cr_as_local = true
+non_volatile_as_local = false
+xer_as_local = true
+ctr_as_local = true
+
+[functions]
+# setjmp: share_registers so the jmp_buf gets the caller's cr.
+"0x8279BFB0" = { share_registers = true }
