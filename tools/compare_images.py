@@ -37,4 +37,19 @@ for s, e in runs[:40]:
     print(f"  0x{a:08X}-0x{start + e * 4 + 3:08X}: {args.a} {wa[s]:08X}  {args.b} {wb[s]:08X}")
 if len(runs) > 40:
     print(f"  ... {len(runs) - 40} more runs")
-print("same code: the manifest can be shared" if not diff else "code differs: needs its own manifest")
+# Same instructions with other immediates (data moved, branch displacements) still means the same
+# functions at the same addresses: the manifest holds only code addresses.
+sys.path.insert(0, str(ROOT / "tools"))
+import numpy as np
+from map_edition import normalize
+na = normalize(np.array(wa, dtype=np.uint32))
+nb = normalize(np.array(wb, dtype=np.uint32))
+nd = np.nonzero(na != nb)[0]
+print(f"ignoring immediates and branch displacements: {len(nd)} words differ"
+      + (f", first at 0x{start + int(nd[0]) * 4:08X}" if len(nd) else ""))
+if not diff:
+    print("same code: the manifest can be shared")
+elif not len(nd):
+    print("same layout (only data offsets differ): the manifest can be shared")
+else:
+    print("code moved: needs its own manifest (tools/make_edition_manifest.py)")

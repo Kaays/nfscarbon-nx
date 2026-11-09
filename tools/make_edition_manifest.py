@@ -17,7 +17,10 @@ import argparse
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
+
+import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = ROOT / "app"
@@ -44,6 +47,27 @@ def good(how):
     return how.startswith("window")  # not "short window": that is how the one wrong Europe guess was made
 
 
+def source_overrides(src):
+    """setjmp, functions declared with an end, and switch tables of an edition's options file."""
+    path = APP / ("overrides.toml" if src == "usa" else f"overrides_{src}.toml")
+    cfg = tomllib.loads(path.read_text()) if path.is_file() else {}
+    setjmps, ends = set(), {}
+    for key, val in cfg.get("functions", {}).items():
+        a = int(key, 16)
+        if val.get("share_registers"):
+            setjmps.add(a)
+        if "end" in val:
+            ends[a] = val["end"]
+    return setjmps, ends, cfg.get("switch_tables", [])
+
+
+def load_norm(region):
+    sys.path.insert(0, str(ROOT / "tools"))
+    from map_edition import normalize
+    data = np.fromfile(ROOT / f"assets/guest_image_{region}.bin", dtype=">u4").astype(np.uint32)
+    return normalize(data)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--region", required=True)
@@ -59,7 +83,11 @@ def main():
     sources = [s for s in sources if (ROOT / f"assets/guest_image_{s}.bin").is_file()]
     found = {}       # address in the new edition -> (source, source address)
     setjmp = None
+    bounded = {}     # function start in the new edition -> (end, [switch tables], source, source address)
+    new_n = load_norm(r)
     for src in sources:
+        setjmps, ends, switches = source_overrides(src)
+        src_n = load_norm(src) if ends else None
         subprocess.run([sys.executable, str(ROOT / "tools/map_edition.py"), "--from", src, "--region", r],
                        check=True)
         rows = read_map(GEN / f"map_{src}_to_{r}.txt")
@@ -70,8 +98,20 @@ def main():
             if not where.startswith("manifest:"):
                 continue
             if where.startswith("manifest:overrides"):
-                if setjmp is None and good(how):
+                if a in setjmps and setjmp is None and good(how):
                     setjmp = (dst, src, a)
+                if a in ends and dst not in bounded and good(how):
+                    # A function whose bounds and switch tables were set by hand: carry them over
+                    # when the whole function is the same code here, moved by one delta.
+                    d, e = dst - a, ends[a]
+                    i, j, k = (a - 0x82000000) // 4, (e - 0x82000000) // 4, (dst - 0x82000000) // 4
+                    if np.array_equal(src_n[i:j], new_n[k:k + j - i]):
+                        tabs = [{"address": t["address"] + d, "register": t["register"],
+                                 "labels": [x + d for x in t["labels"]]}
+                                for t in switches if a <= t["address"] < e]
+                        bounded[dst] = (e + d, tabs, src, a)
+                    else:
+                        print(f"  {src} 0x{a:08X}: bounded function differs here, add it by hand")
                 continue
             if counts[dst] > 1 or not good(how):
                 continue
@@ -113,7 +153,17 @@ non_volatile_as_local = false
 xer_as_local = false
 ctr_as_local = false
 """
+    for dst in sorted(bounded):
+        end, tabs, src, a = bounded[dst]
+        if "[functions]" not in ov:
+            ov += "\n[functions]\n"
+        ov = ov.replace("[functions]\n", f"[functions]\n# Bounds set by hand ({src} 0x{a:08X}): a switch table the scanner misses.\n"
+                        f'"0x{dst:08X}" = {{ end = 0x{end:08X} }}\n', 1)
+        for t in tabs:
+            labels = ", ".join(f"0x{x:08X}" for x in t["labels"])
+            ov += f"\n[[switch_tables]]\naddress = 0x{t['address']:08X}\nregister = {t['register']}\nlabels = [{labels}]\n"
     (APP / f"overrides_{r}.toml").write_text(ov)
+    print(f"{r}: {len(bounded)} functions with hand-set bounds carried over")
     print(f"{r}: {len(found)} functions -> app/nfscarbon_manifest_{r}.toml; setjmp "
           f"{'0x%08X' % setjmp[0] if setjmp else 'not found'} -> app/overrides_{r}.toml")
 
