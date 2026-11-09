@@ -431,3 +431,6 @@ includes = ["overrides_fr.toml"]
 0x8249BA58 = {}  # thunk table slot
 0x8249BA60 = {}  # thunk table slot
 0x8249BA68 = {}  # thunk table slot
+# Thunks in pools whose order differs from pal2 (same instructions and branch target).
+0x82356CC8 = {}  # this-adjust thunk to 0x8234BAA0 (pal2 0x82356D88)
+0x82641590 = {}  # this-adjust thunk to 0x8262DC40 (pal2 0x826415B0)

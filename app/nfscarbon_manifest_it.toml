@@ -430,3 +430,5 @@ includes = ["overrides_it.toml"]
 0x82541938 = {}  # pal2 0x82541938
 0x82541970 = {}  # pal2 0x82541970
 0x82575ED8 = {}  # pal2 0x82575ED8
+# Thunk in a pool whose order differs from pal2 (same instructions and branch target).
+0x82356CA0 = {}  # this-adjust thunk to 0x8234BAA0 (pal2 0x82356D88)
