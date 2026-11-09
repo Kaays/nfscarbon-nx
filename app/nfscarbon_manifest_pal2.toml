@@ -408,8 +408,6 @@ includes = ["overrides_pal2.toml"]
 0x82A65B38 = {}  # usa 0x82A66BE8
 0x82A65B50 = {}  # usa 0x82A66C00
 0x82A840B0 = {}  # usa 0x82A85160
-# Logged on the console at the first video (EA bumper), 2026-11-09.
-0x827D0010 = {}
 # Repeated code the tool leaves out (several matches), at the delta of their unique neighbours,
 # as found on the Europe (Nordic) console.
 0x82189528 = {}  # dispatch stub (usa 0x82189448, +0xE0 like its neighbours)
