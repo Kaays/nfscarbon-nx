@@ -72,6 +72,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--region", required=True)
     ap.add_argument("--disc", default="", help="disc name for the header comment")
+    ap.add_argument("--sources", help="editions to take from, comma separated (default: usa and every "
+                    "edition with a manifest). Leave out editions not yet tested on the console: a wrong "
+                    "address in their manifest would be carried over.")
     args = ap.parse_args()
     r = args.region
     if not (ROOT / f"assets/guest_image_{r}.bin").is_file():
@@ -80,6 +83,8 @@ def main():
     sources = ["usa"] + sorted(p.name[len("nfscarbon_manifest_"):-len(".toml")]
                                for p in APP.glob("nfscarbon_manifest_*.toml")
                                if p.name != f"nfscarbon_manifest_{r}.toml")
+    if args.sources:
+        sources = args.sources.split(",")
     sources = [s for s in sources if (ROOT / f"assets/guest_image_{s}.bin").is_file()]
     found = {}       # address in the new edition -> (source, source address)
     setjmp = None
