@@ -640,6 +640,7 @@ void Renderer::Resolve(const RegisterFile& regs) {
         dest->resolved = true;
         dest->resolved_swap_rb = !is_depth && dest_info.copy_dest_swap;
         dest->last_used_frame = frame_number_;
+        ++dest->resolve_gen;
         // The copy replaced this region: forget any older signature that overlaps it.
         uint32_t dead_here = 0;
         auto& sigs = dest->resolve_sigs;

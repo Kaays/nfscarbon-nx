@@ -312,7 +312,8 @@ Texture* Renderer::GetOrCreateResolveTexture(uint32_t base_address, uint32_t wid
   }
   t->format.host_format_signed = VK_FORMAT_UNDEFINED;
   t->res_scale = res_scale_;
-  if (!CreateTextureImage(*t, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)) {
+  // TRANSFER_SRC: a resolved face is copied into its cube (GetCubeFromResolvedFaces).
+  if (!CreateTextureImage(*t, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT)) {
     return nullptr;
   }
   t->resolved = true;
@@ -323,8 +324,154 @@ Texture* Renderer::GetOrCreateResolveTexture(uint32_t base_address, uint32_t wid
   return raw;
 }
 
+Texture* Renderer::FindResolvedRegion(uint32_t address, uint32_t width, uint32_t height,
+                                      uint32_t& rows) {
+  address &= 0x1FFFFFFF;
+  Texture* best = nullptr;
+  for (Texture* t : resolved_textures_) {
+    uint32_t parent = t->guest.base_address;
+    if (parent > address || t->guest.width < width) continue;
+    // Tiled textures store 32-row strips contiguously (see GetOrCreateResolveTexture).
+    uint32_t bpt = GetTextureFormatInfo(t->guest.format, true).bytes_per_block;
+    uint32_t strip_bytes = AlignUp(t->guest.width, 32u) * 32 * bpt;
+    uint32_t delta = address - parent;
+    if (!strip_bytes || delta % strip_bytes) continue;
+    uint32_t r = delta / strip_bytes * 32;
+    if (r + height > t->guest.height) continue;
+    if (!best || t->last_used_frame > best->last_used_frame) {
+      best = t;
+      rows = r;
+    }
+  }
+  return best;
+}
+
+Texture* Renderer::GetCubeFromResolvedFaces(const GuestTexture& guest) {
+  const uint32_t base = guest.base_address & 0x1FFFFFFF;
+  const uint32_t stride = GetGuestTextureExtent(guest).base_size / 6;
+  if (!stride) return nullptr;
+  const uint64_t key = uint64_t(base) | (uint64_t(guest.width) << 32) | (uint64_t(guest.height) << 48);
+  Texture* faces[6];
+  uint32_t rows[6] = {};
+  uint32_t found = 0;
+  for (uint32_t i = 0; i < 6; ++i) {
+    faces[i] = FindResolvedRegion(base + i * stride, guest.width, guest.height, rows[i]);
+    found += faces[i] ? 1 : 0;
+  }
+  if (found == 0) {
+    // An ordinary cube map loaded from the disc (logged once each, a few, for diagnosis).
+    if (cube_logged_.size() < 16 && cube_logged_.insert(key).second) {
+      REXGPU_INFO("[carbon-gpu] cube {:08X} {}x{} format {} levels {}-{}: from memory (no resolved "
+                  "faces at stride {:X})",
+                  base, guest.width, guest.height, uint32_t(guest.format), guest.mip_min_level,
+                  guest.mip_max_level, stride);
+    }
+    return nullptr;
+  }
+  bool same = found == 6;
+  for (uint32_t i = 1; same && i < 6; ++i) {
+    same = faces[i]->format.host_format == faces[0]->format.host_format &&
+           faces[i]->res_scale == faces[0]->res_scale;
+  }
+  if (!same) {
+    if (cube_logged_.insert(key).second) {
+      REXGPU_WARN("[carbon-gpu] cube {:08X} {}x{} format {}: {} of 6 faces resolved (face stride "
+                  "{:X}), not put together",
+                  base, guest.width, guest.height, uint32_t(guest.format), found, stride);
+    }
+    return nullptr;
+  }
+  CubeFromFaces& c = cubes_from_faces_[key];
+  if (!c.cube || c.cube->format.host_format != faces[0]->format.host_format ||
+      c.cube->res_scale != faces[0]->res_scale) {
+    if (c.cube) {
+      Texture* old = c.cube.get();
+      VkImage image = old->image;
+      VmaAllocation allocation = old->allocation;
+      std::vector<VkImageView> views;
+      for (auto& v : old->views) views.push_back(v.second);
+      texture_bytes_ -= std::min(texture_bytes_, old->memory_bytes);
+      DeferDestroy([this, image, allocation, views]() {
+        const auto& d = vulkan_device_->functions();
+        for (VkImageView v : views) d.vkDestroyImageView(vk_device_, v, nullptr);
+        vmaDestroyImage(allocator_, image, allocation);
+      });
+      c.cube.reset();
+    }
+    auto t = std::make_unique<Texture>();
+    t->guest = guest;
+    t->guest.mip_min_level = 0;
+    t->guest.mip_max_level = 0;
+    t->format = faces[0]->format;
+    t->res_scale = faces[0]->res_scale;
+    if (!CreateTextureImage(*t, 0)) return nullptr;
+    t->resolved = true;
+    c.cube = std::move(t);
+    std::fill(std::begin(c.faces), std::end(c.faces), nullptr);
+    if (cube_logged_.insert(key).second) {
+      REXGPU_INFO("[carbon-gpu] cube {:08X} {}x{} format {}: put together from 6 resolved faces "
+                  "(face stride {:X}, rows {} {} {} {} {} {})",
+                  base, guest.width, guest.height, uint32_t(guest.format), stride, rows[0], rows[1],
+                  rows[2], rows[3], rows[4], rows[5]);
+    }
+  }
+  Texture* cube = c.cube.get();
+  bool dirty = false;
+  for (uint32_t i = 0; i < 6; ++i) {
+    dirty |= c.faces[i] != faces[i] || c.gens[i] != faces[i]->resolve_gen;
+  }
+  if (dirty) {
+    EndRendering();
+    VkCommandBuffer cb = frame().cb;
+    const auto& dfn = vulkan_device_->functions();
+    TransitionImage(cb, cube->image, VK_IMAGE_ASPECT_COLOR_BIT, cube->layout,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    for (uint32_t i = 0; i < 6; ++i) {
+      Texture* f = faces[i];
+      TransitionImage(cb, f->image, VK_IMAGE_ASPECT_COLOR_BIT, f->layout,
+                      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+      int32_t sy = int32_t(std::lround(float(rows[i]) * f->res_scale));
+      VkImageCopy r = {};
+      r.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+      r.srcOffset = {0, sy, 0};
+      r.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, i, 1};
+      r.extent = {std::min(cube->width, f->width),
+                  std::min(cube->height, f->height - uint32_t(std::min<int32_t>(sy, int32_t(f->height)))),
+                  1};
+      if (r.extent.width && r.extent.height) {
+        dfn.vkCmdCopyImage(cb, f->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, cube->image,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &r);
+      }
+    }
+    for (uint32_t i = 0; i < 6; ++i) {
+      TransitionImage(cb, faces[i]->image, VK_IMAGE_ASPECT_COLOR_BIT, faces[i]->layout,
+                      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+      c.faces[i] = faces[i];
+      c.gens[i] = faces[i]->resolve_gen;
+    }
+    TransitionImage(cb, cube->image, VK_IMAGE_ASPECT_COLOR_BIT, cube->layout,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    ++stats_.cubes_from_faces;
+  }
+  for (uint32_t i = 0; i < 6; ++i) {
+    faces[i]->last_used_frame = frame_number_;
+    if (faces[i]->has_unsampled) {
+      for (ResolveSig& s : faces[i]->resolve_sigs) s.sampled = true;
+      faces[i]->has_unsampled = false;
+    }
+  }
+  cube->resolved_swap_rb = faces[0]->resolved_swap_rb;
+  cube->last_used_frame = frame_number_;
+  return cube;
+}
+
 Texture* Renderer::GetTexture(const GuestTexture& guest, bool allow_upload) {
   uint32_t key = (guest.base_address ? guest.base_address : guest.mip_address) & 0x1FFFFFFF;
+  if (guest.base_address && guest.dimension == xenos::DataDimension::kCube) {
+    if (Texture* c = GetCubeFromResolvedFaces(guest)) {
+      return c;
+    }
+  }
   // Resolved images at this address take priority: their data never reaches
   // guest memory.
   if (guest.base_address && guest.dimension == xenos::DataDimension::k2DOrStacked &&

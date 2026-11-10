@@ -3274,14 +3274,15 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
       REXGPU_INFO(
           "[carbon-gpu] resolves per frame: copied {:.1f}, skipped as redundant {:.1f} | pixels "
           "copied {:.0f} k, skipped {:.0f} k | bandwidth copied {:.1f} MiB, avoided {:.1f} MiB "
-          "(skip {}) | overwritten before sampled: {:.1f} resolves, {:.0f} k px, {:.1f} MiB",
+          "(skip {}) | overwritten before sampled: {:.1f} resolves, {:.0f} k px, {:.1f} MiB | "
+          "cubes from faces {:.2f}",
           stats_.resolves_copied / f, stats_.resolves_skipped / f,
           double(stats_.resolve_px_copied) / f / 1e3, double(stats_.resolve_px_skipped) / f / 1e3,
           double(stats_.resolve_bytes_copied) / f / (1024.0 * 1024.0),
           double(stats_.resolve_bytes_skipped) / f / (1024.0 * 1024.0),
           REXCVAR_GET(carbon_gpu_skip_redundant_resolves) ? "on" : "off",
           stats_.resolves_dead / f, double(stats_.resolve_px_dead) / f / 1e3,
-          double(stats_.resolve_bytes_dead) / f / (1024.0 * 1024.0));
+          double(stats_.resolve_bytes_dead) / f / (1024.0 * 1024.0), stats_.cubes_from_faces / f);
     }
     if (REXCVAR_GET(carbon_gpu_stats) && !dest_agg_.empty()) {
       std::vector<const DestAgg*> top;

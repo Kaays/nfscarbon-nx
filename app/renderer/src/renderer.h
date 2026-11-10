@@ -139,6 +139,7 @@ struct Texture {
   float res_scale = 1.0f;           // host pixels per guest pixel (render scale)
   bool resolved_swap_rb = false;    // Last resolve swapped red/blue (copy_dest_swap).
   uint64_t resolved_memory_hash = 0;  // Guest memory hash when last resolved.
+  uint64_t resolve_gen = 0;         // Bumped by every resolve that copies into it.
   uint64_t last_used_frame = 0;
   uint64_t memory_bytes = 0;
 };
@@ -255,6 +256,20 @@ class Renderer {
   Texture* GetOrCreateResolveTexture(uint32_t base_address, uint32_t width, uint32_t height,
                                      xenos::TextureFormat format, uint32_t& y_offset);
   bool CreateTextureImage(Texture& t, VkImageUsageFlags extra_usage);
+  // A resolved texture holding `address` as its row `rows` (the texture itself, or a taller
+  // one the address falls in), with room for `height` rows from there.
+  Texture* FindResolvedRegion(uint32_t address, uint32_t width, uint32_t height, uint32_t& rows);
+  // Cube maps the game draws face by face (the car reflections): each face is resolved to its
+  // place in the cube, but resolves never reach guest memory, so a cube fetch decoded from memory
+  // sees none of it. The cube is put together on the GPU from the six resolved faces instead.
+  Texture* GetCubeFromResolvedFaces(const GuestTexture& guest);
+  struct CubeFromFaces {
+    std::unique_ptr<Texture> cube;
+    Texture* faces[6] = {};
+    uint64_t gens[6] = {};
+  };
+  std::unordered_map<uint64_t, CubeFromFaces> cubes_from_faces_;
+  std::unordered_set<uint64_t> cube_logged_;
   void UploadTexture(Texture& t);
   VkImageView GetTextureView(Texture& t, uint32_t swizzle, bool use_signed,
                              VkImageViewType view_type);
@@ -574,6 +589,7 @@ class Renderer {
     uint32_t textures_uploaded = 0, shaders_compiled = 0;
     uint64_t upload_bytes = 0, arena_bytes = 0, arena_draws = 0, chunk_vertex_draws = 0;
     uint32_t evicted = 0, throttled = 0;
+    uint32_t cubes_from_faces = 0;  // cube maps put together from resolved faces
     double draw_s = 0, resolve_s = 0, swap_s = 0, fence_s = 0, worst_ms = 0;
     // Draw CPU time by phase (carbon_gpu_draw_profile) and upload bytes by kind.
     double phase_s[7] = {};
