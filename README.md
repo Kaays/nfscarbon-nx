@@ -238,7 +238,7 @@ Both run well, at about the same speed as USA: 28-29 FPS median and 20-26 FPS in
 police chases), with the fourth core and a profile-guided build, in sessions of more than two hours.
 
 **Next**: the French, Italian, German and Spanish discs (each its own `default.xex`, manifests in progress), then
-the Collector's Editions and Japan. A disc whose `default.xex` has the same SHA-1 as one in the table above already
+the Collector's Editions. A disc whose `default.xex` has the same SHA-1 as one in the table above already
 works with that NRO.
 
 ## Credits
