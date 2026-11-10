@@ -159,7 +159,7 @@ Core 3 is shared with the system (HOME menu, overlays, background services): not
 |---|---|---|
 | `carbon_gpu_fps_cap` | `30` | frame rate cap (the game itself runs at 30) |
 | `carbon_gpu_render_scale` | `100` | resolution in % of 1280x720. `50` makes the menus GPU-light |
-| `carbon_gpu_reflection_faces` | `6` | car reflection cube faces redrawn per frame (6 = all). Lower is a little faster, but car windows show a stale reflection and people in in-car cutscenes disappear |
+| `carbon_gpu_reflection_faces` | `6` | car reflection cube faces redrawn per frame (6 = all). Lower is a little faster, but the car paint and windows show a stale reflection and people in in-car cutscenes disappear |
 | `nfscarbon_lod_bias` | `0.6` | scene detail: below 0.6 (0.0-1.0) small far objects drop out and lower LODs start sooner, fewer draws in crowded scenes |
 | `carbon_gpu_mirror_half_rate` | `false` | rear-view mirror at half rate (also makes the boss picture-in-picture box choppy) |
 | `carbon_gpu_vertex_arena_mb` | `256` | vertex buffer cache; at 128 it filled up and started over in Race Wars |
