@@ -42,6 +42,8 @@ set(NFSCARBON_SOURCES
     # Videos (cutscenes and the in-race picture-in-picture faces) through FFmpeg's WMV3 decoder.
     src/video_hook.cpp
     src/video_wmv3.cpp
+    # Port settings as rows of the game's Options screen (nfscarbon_options.txt).
+    src/options_menu_hook.cpp
     # PGO: profile dump of the instrumented build (empty unless NFSCARBON_PGO=generate).
     src/nfscarbon_pgo.cpp
 )
