@@ -360,6 +360,7 @@ class Renderer {
     uint32_t size = 0;
     uint32_t first_page = 0;  // in arena_pages_
     uint32_t pages = 0;
+    bool dynamic = false;  // the game rewrote this buffer before: check its pages on every draw
   };
   std::vector<ArenaEntry> arena_entry_list_;
   std::vector<ArenaPage> arena_pages_;
@@ -556,7 +557,11 @@ class Renderer {
   VkShaderModule null_ps_module_ = VK_NULL_HANDLE;
 
   // Per-frame upload dedupe: guest (address, size) -> dword offset in chunk.
-  std::unordered_map<uint64_t, uint32_t> vertex_upload_cache_;
+  struct VertexUploadCacheEntry {
+    uint32_t dword_offset = 0;
+    uint64_t hash = 0;  // contents when copied: a rewrite later in the same frame gets a new copy
+  };
+  std::unordered_map<uint64_t, VertexUploadCacheEntry> vertex_upload_cache_;
   uint32_t vertex_upload_cache_chunk_ = UINT32_MAX;
 
   // Float constant upload reuse.

@@ -49,7 +49,7 @@ REXCVAR_DEFINE_INT32(carbon_gpu_dump_frame_interval, 0, "CarbonGPU",
 REXCVAR_DEFINE_INT32(carbon_gpu_vertex_arena_mb, 256, "CarbonGPU",
                      "Size of the persistent vertex buffer cache (0 = upload vertices every frame)")
     .range(0, 1024);
-REXCVAR_DEFINE_INT32(carbon_gpu_vertex_arena_check_interval, 4, "CarbonGPU",
+REXCVAR_DEFINE_INT32(carbon_gpu_vertex_arena_check_interval, 1, "CarbonGPU",
                      "Frames an unchanged cached vertex page may go between checks (1 = every frame)")
     .range(1, 8);
 REXCVAR_DEFINE_BOOL(carbon_gpu_skip_redundant_resolves, false, "CarbonGPU",
@@ -1701,7 +1701,9 @@ constexpr uint32_t kArenaPageBytes = 16 * 1024;
 // How many frames an unchanged vertex page may go between checks (it doubles up to this). A buffer the
 // game rewrites between two checks is drawn from the old copy until the next one: a suspect for the
 // random one-frame white flash (a stray giant polygon). 1 = every page checked every frame it is used.
-uint8_t g_arena_max_interval = 4;
+// Default 1: with 4 the car shadow (rewritten by the game each frame) slid behind the car at low fps,
+// and checking every frame cost no measurable fps.
+uint8_t g_arena_max_interval = 1;
 }  // namespace
 
 bool Renderer::CreateVertexArena() {
@@ -1829,6 +1831,7 @@ bool Renderer::ArenaFetch(uint64_t key, uint32_t address, uint32_t size, uint32_
       e.offset = uint32_t(arena_used_);
       e.size = size;
       e.pages = (size + kArenaPageBytes - 1) / kArenaPageBytes;
+      e.dynamic = ch != arena_changes_.end() && ch->second > 0;
       e.first_page = uint32_t(arena_pages_.size());
       arena_pages_.resize(arena_pages_.size() + e.pages);
       arena_used_ += aligned;
@@ -1843,8 +1846,10 @@ bool Renderer::ArenaFetch(uint64_t key, uint32_t address, uint32_t size, uint32_
       uint32_t first = lo / kArenaPageBytes, last = (hi - 1) / kArenaPageBytes;
       for (uint32_t p = first; p <= last && p < e.pages; ++p) {
         ArenaPage& page = pages[p];
-        if (page.checked == frame_number_) continue;
-        if (page.hash && frame_number_ < page.checked + page.interval) continue;
+        if (!e.dynamic || !page.hash) {
+          if (page.checked == frame_number_) continue;
+          if (page.hash && frame_number_ < page.checked + page.interval) continue;
+        }
         uint32_t page_start = p * kArenaPageBytes;
         uint32_t n = std::min(kArenaPageBytes, size - page_start);
         uint64_t h = HashBytes(src + page_start, n, 0) | 1;
@@ -1924,8 +1929,11 @@ bool Renderer::SetupVertexData(const RegisterFile& regs, Shader* vs, DrawConstan
     }
     auto it = vertex_upload_cache_.find(key);
     uint32_t dword_offset;
-    if (it != vertex_upload_cache_.end()) {
-      dword_offset = it->second;
+    const uint8_t* vsrc = physical_base_ + (address & 0x1FFFFFFF);
+    // Small buffers only: big ones keep the plain per-frame reuse (hashing them per draw costs too much).
+    const uint64_t vhash = (size && size <= 64 * 1024) ? HashBytes(vsrc, size, 0) : 0;
+    if (it != vertex_upload_cache_.end() && it->second.hash == vhash) {
+      dword_offset = it->second.dword_offset;
     } else {
       UploadAllocation a = Upload(std::max<uint32_t>(size, 16), 16);
       if (a.chunk != vertex_upload_cache_chunk_) {
@@ -1937,12 +1945,12 @@ bool Renderer::SetupVertexData(const RegisterFile& regs, Shader* vs, DrawConstan
         return false;
       }
       if (size) {
-        std::memcpy(a.ptr, physical_base_ + (address & 0x1FFFFFFF), size);
+        std::memcpy(a.ptr, vsrc, size);
       } else {
         std::memset(a.ptr, 0, 16);
       }
       dword_offset = uint32_t(a.offset / 4);
-      vertex_upload_cache_.emplace(key, dword_offset);
+      vertex_upload_cache_[key] = {dword_offset, vhash};
     }
     c.vfetch[i * 2] = dword_offset;
     c.vfetch[i * 2 + 1] = uint32_t(fetch.endian);
