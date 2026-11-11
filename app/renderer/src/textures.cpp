@@ -606,11 +606,16 @@ VkSampler Renderer::GetSampler(const xenos::xe_gpu_texture_fetch_t& fetch,
   sci.addressModeV = address(fetch.clamp_y);
   sci.addressModeW = address(fetch.clamp_z);
   sci.mipLodBias = float(int32_t(lod_bias << 22) >> 22) * (1.0f / 32.0f);
-  // Render-to-texture sources (post-process, blurs) are never worth anisotropic
-  // taps; other textures are capped for the GPU's sake.
-  if (!render_source && aniso != xenos::AnisoFilter::kDisabled && props.samplerAnisotropy &&
-      max_anisotropy_ > 1.0f) {
-    float max_aniso = float(1u << (uint32_t(aniso) - 1));
+  // Render-to-texture sources (post-process, blurs) are never worth anisotropic taps. The game
+  // asks for anisotropy on few of its textures, so carbon_gpu_max_anisotropy (Options > Video) is
+  // applied to every mipmapped, linearly filtered game texture, not only as a cap on the game's
+  // own request: the road and ground far ahead are where it shows.
+  const bool mipmapped_linear = min == xenos::TextureFilter::kLinear &&
+                                mip != xenos::TextureFilter::kBaseMap;
+  if (!render_source && (aniso != xenos::AnisoFilter::kDisabled || mipmapped_linear) &&
+      props.samplerAnisotropy && max_anisotropy_ > 1.0f) {
+    float max_aniso = aniso != xenos::AnisoFilter::kDisabled ? float(1u << (uint32_t(aniso) - 1)) : 16.0f;
+    max_aniso = std::max(max_aniso, max_anisotropy_);
     max_aniso = std::min({max_aniso, props.maxSamplerAnisotropy, max_anisotropy_});
     if (max_aniso > 1.0f) {
       sci.anisotropyEnable = VK_TRUE;
