@@ -57,7 +57,7 @@ constexpr uint32_t kAfterId = 0x138D;    // Video screen: its last (only) row
 constexpr uint32_t kIdBase = 18900;      // our ids (id / 1000 = 18: the table's last slot)
 constexpr uint32_t kPadLeft = 0x9120409Eu;
 constexpr uint32_t kPadRight = 0xB5971BF1u;
-constexpr uint32_t kMaxValues = 4;
+constexpr uint32_t kMaxValues = 5;
 
 struct Value {
   const char* text;  // shown in the menu, and written in nfscarbon_options.txt
@@ -88,6 +88,13 @@ Row g_rows[] = {
       {"Reduced", "carbon_gpu_reflection_faces=1;carbon_gpu_cube_from_faces=true"},
       {"Off", "carbon_gpu_reflection_faces=0;carbon_gpu_cube_from_faces=false"}},
      3, 0, 0},
+    // Anisotropic filtering cap for the game's textures (the road and ground far ahead get sharper;
+    // more texture reads). The Switch default is 4x.
+    {"anisotropic", "Anisotropic Filtering",
+     {{"Off", "carbon_gpu_max_anisotropy=1"}, {"2x", "carbon_gpu_max_anisotropy=2"},
+      {"4x", "carbon_gpu_max_anisotropy=4"}, {"8x", "carbon_gpu_max_anisotropy=8"},
+      {"16x", "carbon_gpu_max_anisotropy=16"}},
+     5, 2, 2},
     // The rear-view mirror (and the boss picture-in-picture box) every frame or every other one.
     {"mirror", "Rear-View Mirror",
      {{"Full Rate", "carbon_gpu_mirror_half_rate=false"}, {"Half Rate", "carbon_gpu_mirror_half_rate=true"}},

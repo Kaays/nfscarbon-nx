@@ -14,6 +14,8 @@
 
 #include "renderer.h"
 
+REXCVAR_DECLARE(int32_t, carbon_gpu_max_anisotropy);
+
 REXCVAR_DEFINE_BOOL(carbon_gpu_cube_from_faces, true, "CarbonGPU",
                     "Car reflection cube put together from the faces the game draws (false: the "
                     "paint reflects only the disc's static cube, as before v0.4.7)");
@@ -580,6 +582,9 @@ VkSampler Renderer::GetSampler(const xenos::xe_gpu_texture_fetch_t& fetch,
                  (uint64_t(fetch.border_color) << 18) | (uint64_t(lod_bias) << 20) |
                  (uint64_t(fetch.mip_min_level) << 30) | (uint64_t(fetch.mip_max_level) << 34) |
                  (uint64_t(render_source) << 40);
+  // The anisotropy cap is read live (Options > Video): a change makes new samplers.
+  max_anisotropy_ = float(REXCVAR_GET(carbon_gpu_max_anisotropy));
+  key |= uint64_t(std::min<uint32_t>(uint32_t(max_anisotropy_), 31)) << 41;
   auto it = samplers_.find(key);
   if (it != samplers_.end()) {
     return it->second;

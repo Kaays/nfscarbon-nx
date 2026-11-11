@@ -35,6 +35,11 @@ carbon_gpu_motion_blur = true
 # Also in the game: Options > Video (saved in nfscarbon_options.txt, which wins over this file).
 carbon_gpu_antialiasing = false
 
+# Anisotropic filtering cap for the game's textures (1 = off, 2, 4, 8, 16): the road
+# far ahead gets sharper, at the cost of texture reads.
+# Also in the game: Options > Video (saved in nfscarbon_options.txt, which wins over this file).
+carbon_gpu_max_anisotropy = 4
+
 # Skip a resolve when it would copy the same contents again (false = always copy).
 carbon_gpu_skip_redundant_resolves = false
 
