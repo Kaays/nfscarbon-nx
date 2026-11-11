@@ -119,6 +119,8 @@ struct Slot {
   u64 last_ticks = 0;
   bool busy = true;
   double cpu = 0.0;
+  u32 hot = 0;           // consecutive intervals of the audio mixer near a whole core
+  bool demoted = false;  // its priority was dropped by the watchdog below
 };
 Slot g_slots[kMaxThreads];
 
@@ -365,6 +367,29 @@ void Report(u64 elapsed_ticks, u64 tick_freq, u64 counters_last[kCounterCount],
     }
     s.cpu = double(ticks - s.last_ticks) * 100.0 / double(elapsed_ticks);
     s.last_ticks = ticks;
+    /*
+     * Audio mixer watchdog. nfscarbon-nx raises the game's mixer ("RWAudioCore Dac") above the
+     * renderer; it normally blocks between blocks (5-65 % of a core). Once, after a profile load,
+     * it stayed at 100 % with silent output for a minute and the game then froze in a menu: it was
+     * spinning, most likely on something a 0x3B game thread on its core had to release. After two
+     * intervals (20 s) near a whole core it goes back to the game's own priority, 0x3B, for the
+     * rest of the session, so that thread gets the CPU again.
+     */
+    if (std::strncmp(s.name, "RWAudioCore", 11) == 0) {
+      s.hot = s.cpu >= 95.0 ? s.hot + 1 : 0;
+      if (s.hot >= 2 && !s.demoted) {
+        s.demoted = true;
+        const Result rc = svcSetThreadPriority(h, 0x3B);
+        std::fprintf(stderr, "[perfil] mezclador de audio al %.0f%% durante %u intervalos: prioridad 0x3B (%s)\n",
+                     s.cpu, s.hot, R_SUCCEEDED(rc) ? "aceptada" : "rechazada");
+        if (FILE* f = std::fopen(ReportPath().c_str(), "a")) {
+          std::fprintf(f, "\n!! mezclador de audio (RWAudioCore Dac) al %.0f%% durante %u intervalos: "
+                          "vuelve a la prioridad 0x3B (%s)\n",
+                       s.cpu, s.hot, R_SUCCEEDED(rc) ? "aceptada" : "rechazada");
+          std::fclose(f);
+        }
+      }
+    }
     /*
      * All threads are sampled, including those that use no CPU. In a hang caused by
      * a wait, the thread that matters is exactly that one: the stopped one.
