@@ -2588,13 +2588,16 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
   upload_kind_ = 2;
   // Constants.
   uint32_t dyn_offsets[3];
-  // The speed blur composite (ps D92CA043533999AF, full screen): colour = sharp + (blurred -
-  // sharp) * c0.x * blurred.a, c0.x being the blur amount the game sets per frame. With
-  // carbon_gpu_motion_blur off c0.x is written as 0 in this draw's copy of the constants.
+  // The speed blur. The half-resolution copy of the scene that the blur chain starts from (ps
+  // 2047A91B3C7E8F62) gets alpha = dot(mask texture, c0.xyz); the blurred result is blended back
+  // over the scene by that alpha. c0.xyz is how much the game wants blurred, set per frame. With
+  // carbon_gpu_motion_blur off it is written as 0 in this draw's copy of the constants: the
+  // chain still runs (the pause screen and in-race cutscenes read its output) but blends nothing.
   const bool blur_composite = ps && ps->hash == kSpeedBlurCompositePs;
   if (blur_composite) {
-    float amount;
-    std::memcpy(&amount, &regs.values[kRegFloatConstants + 1024], 4);
+    float c0[3];
+    std::memcpy(c0, &regs.values[kRegFloatConstants + 1024], 12);
+    float amount = std::fabs(c0[0]) + std::fabs(c0[1]) + std::fabs(c0[2]);
     ++stats_.blur_draws;
     stats_.blur_amount_min = std::min(stats_.blur_amount_min, amount);
     stats_.blur_amount_max = std::max(stats_.blur_amount_max, amount);
@@ -2639,8 +2642,8 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
     if (edit) {
       // c0 is the first slot of a plain upload, and of a packed one when the map starts at 0.
       if ((!map && n) || (map && !map->empty() && (*map)[0] == 0)) {
-        const float zero = 0.0f;
-        std::memcpy(a.ptr, &zero, 4);
+        const float zero[3] = {0.0f, 0.0f, 0.0f};
+        std::memcpy(a.ptr, zero, 12);
       }
     }
     last_constant_map_[stage] = map;
@@ -3373,6 +3376,7 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
                   stats_.blur_draws / double(std::max<uint64_t>(stats_frames_, 1)),
                   stats_.blur_amount_min, stats_.blur_amount_max,
                   REXCVAR_GET(carbon_gpu_motion_blur) ? "" : " (off: drawn with amount 0)");
+      // amount = |c0.x| + |c0.y| + |c0.z| of the blur chain's first pass
     }
     if (!post_census_.empty()) {
       std::vector<std::pair<uint64_t, const PostCensus*>> top;

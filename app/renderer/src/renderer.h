@@ -439,7 +439,7 @@ class Renderer {
   std::unordered_map<uint64_t, PassAgg> pass_agg_;
   std::string skip_ps_text_;              // carbon_gpu_skip_ps, as last parsed
   std::unordered_set<uint64_t> skip_ps_;
-  static constexpr uint64_t kSpeedBlurCompositePs = 0xD92CA043533999AFull;
+  static constexpr uint64_t kSpeedBlurCompositePs = 0x2047A91B3C7E8F62ull;
   struct PostCensus {  // carbon_gpu_post_census
     uint64_t vs_hash = 0;
     uint32_t draws = 0, width = 0, height = 0, reads = 0;
