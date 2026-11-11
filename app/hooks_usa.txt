@@ -12,3 +12,4 @@ src/render_mode_hook.cpp
 src/ring_wait_hook.cpp
 src/video_hook.cpp
 src/video_wmv3.cpp
+src/options_menu_hook.cpp
