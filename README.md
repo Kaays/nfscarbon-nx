@@ -37,8 +37,6 @@ rate, broken-up sound). Use an overclock (sys-clk or similar).
 
 ### Known issues
 
-- **The car's shadow slides behind the car** at speed (it sits under the car when slow). Most visible in Race Wars.
-  Not the vertex cache, not the resolve or reflection shortcuts; cause not found yet.
 - **A rare one-frame white flash** (a stray giant polygon), now and then in long races. Once in a while, at a race
   start, a few frames go **black** instead.
 - **A short freeze when the player takes control** at the start of a race.
@@ -152,6 +150,10 @@ at `sdmc:/atmosphere/contents/<forwarder title id>/exefs/main.npdm`.
 Core 3 is shared with the system (HOME menu, overlays, background services): not tested in long sessions.
 
 ## Settings
+
+Most visual settings are also in the game itself, under **Options > Video** (Motion Blur, Anti-Aliasing, Scene
+Detail, Car Reflections, Anisotropic Filtering, Resolution, Rear-View Mirror). What you choose there is saved in
+`nfscarbon_options.txt` next to the NRO and wins over the toml; Resolution applies after a restart.
 
 `nfscarbon.toml` describes each setting. The main ones:
 
