@@ -15,13 +15,15 @@
 // of the current language (it searches the three loaded string tables); for our hashes it
 // answers with our strings, kept in guest memory taken from the game's allocator.
 //
-// The rows are appended after the last row of one screen (kAfterId). Values are kept in
+// The rows are appended after the last row of the Video screen (kAfterId; its only row is the
+// brightness, 0x138D. Gameplay ends with 0x13B0). Values are kept in
 // nfscarbon_options.txt next to the NRO, loaded at the first text lookup of the session, and
 // applied by setting the matching cvars.
 
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <mutex>
 #include <string>
@@ -49,7 +51,7 @@ REX_EXTERN(sub_822FA300);  // set a text object's string by hash
 
 namespace {
 
-constexpr uint32_t kAfterId = 0x13B0;    // last row of the screen our rows follow
+constexpr uint32_t kAfterId = 0x138D;    // Video screen: its last (only) row
 constexpr uint32_t kIdBase = 18900;      // our ids (id / 1000 = 18: the table's last slot)
 constexpr uint32_t kPadLeft = 0x9120409Eu;
 constexpr uint32_t kPadRight = 0xB5971BF1u;
@@ -57,22 +59,30 @@ constexpr uint32_t kPadRight = 0xB5971BF1u;
 struct Row {
   const char* key;    // in nfscarbon_options.txt
   const char* label;  // shown in the menu
-  const char* cvar;   // applied as "true" / "false"
+  const char* on;     // value texts
+  const char* off;
+  const char* cvar;   // applied with these values
+  const char* cvar_on;
+  const char* cvar_off;
   bool dflt;
   bool value;
 };
 Row g_rows[] = {
-    {"motion_blur", "Motion Blur", "carbon_gpu_motion_blur", true, true},
+    {"motion_blur", "Motion Blur", "On", "Off", "carbon_gpu_motion_blur", "true", "false", true, true},
+    // nfscarbon_lod_bias: the game's own detail, or small far objects dropping out sooner (fewer
+    // draws in crowded races; the shipped toml has 0.6).
+    {"scene_detail", "Scene Detail", "Full", "Reduced", "nfscarbon_lod_bias", "1.0", "0.6", false, false},
 };
 constexpr uint32_t kRowCount = sizeof(g_rows) / sizeof(g_rows[0]);
 
-// Text hashes of our strings: labels, then "On" and "Off".
+// Text hashes of our strings: per row its label, on text and off text.
 constexpr uint32_t kTextBase = 0x7A5E0100u;
-constexpr uint32_t kTextOn = 0x7A5E01F0u;
-constexpr uint32_t kTextOff = 0x7A5E01F1u;
+uint32_t LabelHash(uint32_t row) { return kTextBase + row * 3; }
+uint32_t OnHash(uint32_t row) { return kTextBase + row * 3 + 1; }
+uint32_t OffHash(uint32_t row) { return kTextBase + row * 3 + 2; }
 
 std::mutex g_mutex;
-uint32_t g_strings = 0;  // guest block: kRowCount + 2 strings of kStringBytes
+uint32_t g_strings = 0;  // guest block: 3 strings of kStringBytes per row
 constexpr uint32_t kStringBytes = 48;
 uint32_t g_scratch = 0;  // guest word for the constructor's label pointer
 std::atomic<bool> g_loaded{false};
@@ -81,7 +91,7 @@ std::filesystem::path OptionsPath() {
   return rex::filesystem::GetExecutableFolder() / "nfscarbon_options.txt";
 }
 
-void Apply(const Row& r) { rex::cvar::SetFlagByName(r.cvar, r.value ? "true" : "false"); }
+void Apply(const Row& r) { rex::cvar::SetFlagByName(r.cvar, r.value ? r.cvar_on : r.cvar_off); }
 
 void Save() {
   std::ofstream f(OptionsPath(), std::ios::trunc);
@@ -98,7 +108,13 @@ void LoadOnce() {
   if (g_loaded.exchange(true)) return;
   for (Row& r : g_rows) {
     std::string v = rex::cvar::GetFlagByName(r.cvar);
-    r.value = v.empty() ? r.dflt : (v == "true" || v == "1");
+    if (v.empty()) {
+      r.value = r.dflt;
+    } else if (v == "true" || v == "false") {
+      r.value = v == "true";
+    } else {
+      r.value = std::strtod(v.c_str(), nullptr) >= std::strtod(r.cvar_on, nullptr) - 1e-6;
+    }
   }
   std::ifstream f(OptionsPath());
   std::string line;
@@ -131,27 +147,26 @@ void PutString(uint8_t* base, uint32_t at, const char* s) {
 // Guest memory for our strings and the scratch word, taken once from the game's allocator.
 bool EnsureGuestMemory(PPCContext& ctx, uint8_t* base) {
   if (g_strings) return true;
-  ctx.r3.u64 = (kRowCount + 2) * kStringBytes + 16;
+  ctx.r3.u64 = kRowCount * 3 * kStringBytes + 16;
   ctx.r4.u64 = 0;
   ctx.r5.u64 = 0;
   ctx.r6.u64 = 0;
   sub_821A3320(ctx, base);
   uint32_t block = ctx.r3.u32;
   if (!block) return false;
-  for (uint32_t i = 0; i < kRowCount; ++i) PutString(base, block + 16 + i * kStringBytes, g_rows[i].label);
-  PutString(base, block + 16 + kRowCount * kStringBytes, "On");
-  PutString(base, block + 16 + (kRowCount + 1) * kStringBytes, "Off");
+  for (uint32_t i = 0; i < kRowCount; ++i) {
+    PutString(base, block + 16 + (i * 3 + 0) * kStringBytes, g_rows[i].label);
+    PutString(base, block + 16 + (i * 3 + 1) * kStringBytes, g_rows[i].on);
+    PutString(base, block + 16 + (i * 3 + 2) * kStringBytes, g_rows[i].off);
+  }
   g_scratch = block;
   g_strings = block + 16;
   return true;
 }
 
 uint32_t StringFor(uint32_t hash) {
-  if (!g_strings) return 0;
-  if (hash >= kTextBase && hash < kTextBase + kRowCount) return g_strings + (hash - kTextBase) * kStringBytes;
-  if (hash == kTextOn) return g_strings + kRowCount * kStringBytes;
-  if (hash == kTextOff) return g_strings + (kRowCount + 1) * kStringBytes;
-  return 0;
+  if (!g_strings || hash < kTextBase || hash >= kTextBase + kRowCount * 3) return 0;
+  return g_strings + (hash - kTextBase) * kStringBytes;
 }
 
 uint32_t NameHash(uint32_t n) {
@@ -173,12 +188,12 @@ void AddRow(PPCContext& ctx, uint8_t* base, uint32_t screen, uint32_t row) {
   sub_821A3320(ctx, base);
   uint32_t widget = ctx.r3.u32;
   if (!widget) return;
-  REX_STORE_U32(g_scratch, kTextBase + row);
+  REX_STORE_U32(g_scratch, LabelHash(row));
   ctx.r3.u64 = widget;
   ctx.r4.u64 = g_scratch;
   ctx.r5.u64 = kIdBase + row;
-  ctx.r6.u64 = kTextOn;
-  ctx.r7.u64 = kTextOff;
+  ctx.r6.u64 = OnHash(row);
+  ctx.r7.u64 = OffHash(row);
   ctx.r8.u64 = 1;
   sub_82345AE0(ctx, base);
   ctx.r3.u64 = screen;
@@ -245,7 +260,7 @@ extern "C" REX_FUNC(sub_82345B68) {
   r.value = !r.value;
   Apply(r);
   Save();
-  REXLOG_INFO("[menu] {} = {}", r.key, r.value ? "on" : "off");
+  REXLOG_INFO("[menu] {} = {}", r.key, r.value ? r.on : r.off);
   ctx.r4.u64 = pad;
   CallVirtual(ctx, base, widget, 0x38);  // what the game does after a change
   DrawValue(ctx, base, widget, r);
