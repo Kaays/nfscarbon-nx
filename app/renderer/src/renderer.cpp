@@ -86,6 +86,9 @@ REXCVAR_DEFINE_INT32(carbon_gpu_reflection_faces, 6, "CarbonGPU",
     .range(0, 6);
 REXCVAR_DEFINE_BOOL(carbon_gpu_mirror_half_rate, false, "CarbonGPU",
                     "Redraw the rear-view mirror every other frame");
+REXCVAR_DEFINE_BOOL(carbon_gpu_post_census, false, "CarbonGPU",
+                    "Debug: every 5 s log the pixel shaders of the screen-space draws (no depth target) "
+                    "with their target size and texture reads, to find a post effect's shader");
 REXCVAR_DEFINE_BOOL(carbon_gpu_bloom, true, "CarbonGPU",
                     "Run the game's bloom blur passes (very heavy on phone GPUs)");
 REXCVAR_DEFINE_BOOL(carbon_gpu_async_pipelines, true, "CarbonGPU",
@@ -2208,6 +2211,21 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
     }
   }
 
+  if (ps && !pass.depth && REXCVAR_GET(carbon_gpu_post_census)) {
+    PostCensus& c = post_census_[ps->hash];
+    if (!c.draws) {
+      const std::string& b = ps->translated.body;
+      for (size_t at = b.find("xe_tex_post("); at != std::string::npos;
+           at = b.find("xe_tex_post(", at + 1)) {
+        ++c.reads;
+      }
+      c.vs_hash = vs ? vs->hash : 0;
+    }
+    ++c.draws;
+    c.width = pass.width;
+    c.height = pass.height;
+  }
+
   Mark(0);  // state, render targets (and the fence wait of a new frame)
   // Shaders.
   auto program_cntl = regs.Get<reg::SQ_PROGRAM_CNTL>();
@@ -3299,6 +3317,22 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
             "{:.2f}/frame overwritten before sampled",
             d.base, d.w, d.h, d.fmt, d.src_pitch, d.src_fmt, d.resolves / f, d.dead / f);
       }
+    }
+    if (!post_census_.empty()) {
+      std::vector<std::pair<uint64_t, const PostCensus*>> top;
+      for (auto& kv : post_census_) top.push_back({kv.first, &kv.second});
+      std::sort(top.begin(), top.end(), [](const auto& a, const auto& b) {
+        return uint64_t(a.second->draws) * a.second->width * a.second->height >
+               uint64_t(b.second->draws) * b.second->width * b.second->height;
+      });
+      double f = double(std::max<uint64_t>(stats_frames_, 1));
+      for (size_t i = 0; i < top.size() && i < 16; ++i) {
+        const PostCensus& c = *top[i].second;
+        REXGPU_INFO("[carbon-gpu]   post draw ps {:016X} vs {:016X}: {:.2f}/frame, target {}x{}, "
+                    "{} texture reads",
+                    top[i].first, c.vs_hash, c.draws / f, c.width, c.height, c.reads);
+      }
+      post_census_.clear();
     }
     dest_agg_.clear();
     frame_ms_hist_.clear();

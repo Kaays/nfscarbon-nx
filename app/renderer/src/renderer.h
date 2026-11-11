@@ -437,6 +437,11 @@ class Renderer {
   void GpuStamp(GpuTag tag, const StampInfo* info = nullptr);
   StampInfo ts_info_[kFramesInFlight][kMaxStamps];
   std::unordered_map<uint64_t, PassAgg> pass_agg_;
+  struct PostCensus {  // carbon_gpu_post_census
+    uint64_t vs_hash = 0;
+    uint32_t draws = 0, width = 0, height = 0, reads = 0;
+  };
+  std::unordered_map<uint64_t, PostCensus> post_census_;
   uint32_t pass_draws_ = 0;
   uint32_t debug_mode_ = 0;
   float max_anisotropy_ = 16.0f;
