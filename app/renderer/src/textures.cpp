@@ -630,6 +630,16 @@ VkSampler Renderer::GetSampler(const xenos::xe_gpu_texture_fetch_t& fetch,
   VkSampler sampler = VK_NULL_HANDLE;
   vulkan_device_->functions().vkCreateSampler(vk_device_, &sci, nullptr, &sampler);
   samplers_.emplace(key, sampler);
+  // How many samplers get anisotropy, logged when the cap changes and every 64 new samplers.
+  static uint32_t made = 0, made_aniso = 0;
+  static float logged_cap = -1.0f;
+  ++made;
+  made_aniso += sci.anisotropyEnable ? 1 : 0;
+  if (logged_cap != max_anisotropy_ || (made % 64) == 0) {
+    logged_cap = max_anisotropy_;
+    REXGPU_INFO("[carbon-gpu] samplers: {} made, {} with anisotropic filtering (cap {:.0f}x, device max {:.0f}x)",
+                made, made_aniso, max_anisotropy_, props.maxSamplerAnisotropy);
+  }
   return sampler;
 }
 
