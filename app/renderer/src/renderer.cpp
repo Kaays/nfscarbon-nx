@@ -2211,7 +2211,7 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
   // 8888 target with depth) can be updated less often than the main view.
   // reflection_faces_ = 0 skips every face: in Race Wars the resolves of the six 256x256 faces
   // (06AB2000-06BF2000) were overwritten before any texture read them 257.33 times out of 257.42
-  // (the "overwritten before sampled" counter). That is
+  // (the "overwritten before sampled" counter), as zofo007's NFS-Carbon-NX also found. That is
   // 170-360 draws per frame less for the renderer. On the console the car paint reflects a little
   // less with 0, so the game does read the cube now and then; 1 keeps it fresh every 6 frames.
   if (pass.color[0] && pass.depth && !pass.color[1]) {

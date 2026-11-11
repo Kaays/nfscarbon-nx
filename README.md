@@ -274,7 +274,14 @@ This port only exists because of the work of these people and projects:
 - **[StevensND — nfsmw-nx](https://github.com/StevensND/nfsmw-nx)**: the Switch port of Need for Speed: Most Wanted.
   Its SDK layer, NVK patch, toolchain and documentation are the reference this port follows, and several fixes
   (frame handoff, code generator options) are ports of its solutions.
-  scene detail (LOD) hook, its idea of skipping the car reflection faces and its mode-1 sample unpack are used here.
+- **[zofo007 — NFS-Carbon-NX](https://github.com/zofo007/NFS-Carbon-NX)** (GPL-3.0): another Switch port of Carbon.
+  Code taken from it, each with its source named in the file:
+  - the cutscene and boss face video decoding through FFmpeg (`app/src/video_hook.cpp`, `video_wmv3.*`): the game's
+    own decoder played the videos in slow motion on the Switch;
+  - the fast audio sample unpack, mode 1 (in `app/src/audio_native.cpp`): less CPU for the game's audio mixer;
+  - the scene detail hook (`app/src/lod_bias_hook.cpp`, `nfscarbon_lod_bias`): fewer draws in crowded scenes.
+
+  Its finding that the car reflection cube faces are often never read also helped here.
 - **[madelrandel-blip — NFSMW Recompiled](https://github.com/madelrandel-blip/NFSMW-Recompiled)**: the project
   nfsmw-nx started from.
 - **[Tom Clay — ReXGlue SDK](https://github.com/rexglue/rexglue-sdk)**, built on the work of the
