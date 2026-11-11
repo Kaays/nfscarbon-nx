@@ -19,13 +19,16 @@ carbon_gpu_render_scale = 100
 # Car reflection cube faces redrawn per frame (6 = all, 0 = none). Below 6 saves
 # draws, but the car windows show a stale reflection: in in-car cutscenes (boss
 # confrontations, Neville's garage) the people behind the glass disappear.
+# Also in the game: Options > Video (saved in nfscarbon_options.txt, which wins over this file).
 carbon_gpu_reflection_faces = 6
 
 # Rear-view mirror and the boss picture-in-picture box at half rate (choppy box).
+# Also in the game: Options > Video (saved in nfscarbon_options.txt, which wins over this file).
 carbon_gpu_mirror_half_rate = false
 
 # The game's speed blur: the picture blurs with speed and the NOS. false = always
 # sharp (no frame rate change: only the final blend is left out).
+# Also in the game: Options > Video (saved in nfscarbon_options.txt, which wins over this file).
 carbon_gpu_motion_blur = true
 
 # Skip a resolve when it would copy the same contents again (false = always copy).
@@ -36,6 +39,7 @@ carbon_gpu_skip_redundant_resolves = false
 carbon_gpu_vertex_arena_mb = 256
 
 # Scene detail (1.0 = the game's own). Below 1, small far objects drop out and lower
+# Also in the game: Options > Video (saved in nfscarbon_options.txt, which wins over this file).
 nfscarbon_lod_bias = 0.6
 
 # The 3-second command processor log line costs SD card writes.
