@@ -6,7 +6,7 @@
  * GPU at 99.7% according to the Horizon OC monitor. That does not tell what to optimize: it takes
  * knowing which thread spends the CPU and in which function. Horizon has no perf and no debugger
  * on a retail console, so it is measured from inside. Every 10 s a report is appended to
- * <NRO folder>/logs/rex/rex_perfil.log:
+ * <NRO folder>/logs/rex/rex_perfil.log (the four sessions before in rex_perfil_1..4.log):
  *
  *  - Game FPS: guest presents (IssueSwap).
  *  - Faults per second by type: each one costs an exception, or two with the resume through the
@@ -842,6 +842,17 @@ void ProfilerMain(void*) {
   u64 counters_last[kCounterCount]{};
   for (unsigned i = 0; i < kCounterCount; ++i) {
     counters_last[i] = g_counters[i].load(std::memory_order_relaxed);
+  }
+  // Keep the reports of the last sessions: rex_perfil.log -> rex_perfil_1.log -> ... _4.log.
+  {
+    const std::string cur = ReportPath();
+    const std::string stem = cur.substr(0, cur.size() - 4);  // without ".log"
+    for (int i = 4; i >= 1; --i) {
+      const std::string from = i == 1 ? cur : stem + "_" + std::to_string(i - 1) + ".log";
+      const std::string to = stem + "_" + std::to_string(i) + ".log";
+      std::remove(to.c_str());
+      std::rename(from.c_str(), to.c_str());
+    }
   }
   if (FILE* f = std::fopen(ReportPath().c_str(), "w")) {
     std::fprintf(f, "imagen 0x%016" PRIx64 ", codigo hasta 0x%016" PRIx64 "\n\n", g_base,
