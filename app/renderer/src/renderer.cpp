@@ -89,6 +89,8 @@ REXCVAR_DEFINE_BOOL(carbon_gpu_mirror_half_rate, false, "CarbonGPU",
 REXCVAR_DEFINE_BOOL(carbon_gpu_post_census, false, "CarbonGPU",
                     "Debug: every 5 s log the pixel shaders of the screen-space draws (no depth target) "
                     "with their target size and texture reads, to find a post effect's shader");
+REXCVAR_DEFINE_BOOL(carbon_gpu_motion_blur, true, "CarbonGPU",
+                    "The game's speed blur (motion blur in races and with the NOS). false = sharp picture");
 REXCVAR_DEFINE_BOOL(carbon_gpu_bloom, true, "CarbonGPU",
                     "Run the game's bloom blur passes (very heavy on phone GPUs)");
 REXCVAR_DEFINE_BOOL(carbon_gpu_async_pipelines, true, "CarbonGPU",
@@ -2559,6 +2561,18 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
   upload_kind_ = 2;
   // Constants.
   uint32_t dyn_offsets[3];
+  // The speed blur composite (ps D92CA043533999AF, full screen): colour = sharp + (blurred -
+  // sharp) * c0.x * blurred.a, c0.x being the blur amount the game sets per frame. With
+  // carbon_gpu_motion_blur off c0.x is written as 0 in this draw's copy of the constants.
+  const bool blur_composite = ps && ps->hash == kSpeedBlurCompositePs;
+  if (blur_composite) {
+    float amount;
+    std::memcpy(&amount, &regs.values[kRegFloatConstants + 1024], 4);
+    ++stats_.blur_draws;
+    stats_.blur_amount_min = std::min(stats_.blur_amount_min, amount);
+    stats_.blur_amount_max = std::max(stats_.blur_amount_max, amount);
+  }
+  const bool kill_blur = blur_composite && !REXCVAR_GET(carbon_gpu_motion_blur);
   for (uint32_t stage = 0; stage < 2; ++stage) {
     Shader* s = stage == 0 ? vs : ps;
     uint32_t n = s ? s->translated.float_constant_count : 0;
@@ -2567,7 +2581,8 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
     // A packed upload only fits a shader with the same map; a plain one any shader reading fewer.
     const bool same_layout = map ? last_constant_map_[stage] == map
                                  : (!last_constant_map_[stage] && last_constant_count_[stage] >= n);
-    if (!float_constants_dirty_[stage] && last_constant_chunk_[stage] == current_chunk_ &&
+    const bool edit = kill_blur && stage == 1;
+    if (!edit && !float_constants_dirty_[stage] && last_constant_chunk_[stage] == current_chunk_ &&
         same_layout) {
       dyn_offsets[stage] = uint32_t(last_constant_offset_[stage]);
       continue;
@@ -2594,12 +2609,20 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
       std::memcpy(a.ptr, src_consts, size_t(n) * 16);
       ++stats_.const_uploads_full;
     }
+    if (edit) {
+      // c0 is the first slot of a plain upload, and of a packed one when the map starts at 0.
+      if ((!map && n) || (map && !map->empty() && (*map)[0] == 0)) {
+        const float zero = 0.0f;
+        std::memcpy(a.ptr, &zero, 4);
+      }
+    }
     last_constant_map_[stage] = map;
     dyn_offsets[stage] = uint32_t(a.offset);
     last_constant_offset_[stage] = a.offset;
     last_constant_chunk_[stage] = a.chunk;
     last_constant_count_[stage] = n;
-    float_constants_dirty_[stage] = false;
+    // An edited copy is not reused by the next draw.
+    float_constants_dirty_[stage] = edit;
   }
   {
     UploadAllocation a = Upload(sizeof(DrawConstants), ubo_alignment_);
@@ -3317,6 +3340,12 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
             "{:.2f}/frame overwritten before sampled",
             d.base, d.w, d.h, d.fmt, d.src_pitch, d.src_fmt, d.resolves / f, d.dead / f);
       }
+    }
+    if (stats_.blur_draws) {
+      REXGPU_INFO("[carbon-gpu] speed blur: {:.2f} composites/frame, amount {:.3f}..{:.3f}{}",
+                  stats_.blur_draws / double(std::max<uint64_t>(stats_frames_, 1)),
+                  stats_.blur_amount_min, stats_.blur_amount_max,
+                  REXCVAR_GET(carbon_gpu_motion_blur) ? "" : " (off: drawn with amount 0)");
     }
     if (!post_census_.empty()) {
       std::vector<std::pair<uint64_t, const PostCensus*>> top;
