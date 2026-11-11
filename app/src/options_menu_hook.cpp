@@ -95,6 +95,16 @@ Row g_rows[] = {
       {"4x", "carbon_gpu_max_anisotropy=4"}, {"8x", "carbon_gpu_max_anisotropy=8"},
       {"16x", "carbon_gpu_max_anisotropy=16"}},
      5, 2, 2},
+    // Render resolution (carbon_gpu_render_scale, percent of the game's 1280x720). The renderer sizes
+    // its targets when it starts, so a change takes effect at the next start of the game; the
+    // value is applied before the renderer is created (NfsCarbonLoadOptions, OnPostInitLogging).
+    {"resolution", "Resolution (Restart)",
+     {{"Ultra Performance (360p)", "carbon_gpu_render_scale=50"},
+      {"Performance (480p)", "carbon_gpu_render_scale=67"},
+      {"Balanced (600p)", "carbon_gpu_render_scale=83"},
+      {"Quality (720p)", "carbon_gpu_render_scale=100"},
+      {"Ultra Quality (1080p)", "carbon_gpu_render_scale=150"}},
+     5, 3, 3},
     // The rear-view mirror (and the boss picture-in-picture box) every frame or every other one.
     {"mirror", "Rear-View Mirror",
      {{"Full Rate", "carbon_gpu_mirror_half_rate=false"}, {"Half Rate", "carbon_gpu_mirror_half_rate=true"}},
@@ -285,6 +295,13 @@ void CallVirtual(PPCContext& ctx, uint8_t* base, uint32_t object, uint32_t offse
 }
 
 }  // namespace
+
+// The values of nfscarbon_options.txt applied to the cvars, from NfsCarbonApp::OnPostInitLogging:
+// after the toml, before the renderer is created (the resolution is only read there).
+void NfsCarbonLoadOptions() {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  LoadOnce();
+}
 
 // AddOption (screen, id): ours after the screen's last row.
 extern "C" REX_FUNC(sub_82347400) {

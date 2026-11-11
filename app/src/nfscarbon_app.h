@@ -22,6 +22,9 @@
 
 #include "nfscarbon_switch.h"
 
+// options_menu_hook.cpp (or its translation for another edition).
+void NfsCarbonLoadOptions();
+
 class NfsCarbonApp : public rex::ReXApp {
  public:
   using rex::ReXApp::ReXApp;
@@ -99,6 +102,8 @@ class NfsCarbonApp : public rex::ReXApp {
   void OnPostInitLogging() override {
     // The toml has been read; Vulkan is created later, in SetupPresentation.
     nfscarbon::switch_port::ApplyEarlySettings();
+    // Settings changed in the game's Options screen win over the toml (options_menu_hook.cpp).
+    NfsCarbonLoadOptions();
     if (!nfscarbon::switch_port::NativeRendererActive()) {
       SetIfDefault("gpu_plugin", "xenos");
     }

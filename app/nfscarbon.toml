@@ -13,7 +13,10 @@ nfscarbon_renderer = "carbon"
 # on the Xbox 360; the Switch's three 1 GHz cores will not hold more for now.
 carbon_gpu_fps_cap = 30
 
-# Render resolution in percent of the game's 1280x720 (handheld: 100).
+# Render resolution in percent of the game's 1280x720 (handheld: 100). 50 = 360p,
+# 67 = 480p, 83 = 600p, 100 = 720p, 150 = 1080p (drawn at 1080p, shown at 720p).
+# Also in the game: Options > Video > Resolution (saved in nfscarbon_options.txt,
+# which wins over this file; takes effect at the next start).
 carbon_gpu_render_scale = 100
 
 # Car reflection cube faces redrawn per frame (6 = all, 0 = none). Below 6 saves
