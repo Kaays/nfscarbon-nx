@@ -439,7 +439,8 @@ class Renderer {
   std::unordered_map<uint64_t, PassAgg> pass_agg_;
   std::string skip_ps_text_;              // carbon_gpu_skip_ps, as last parsed
   std::unordered_set<uint64_t> skip_ps_;
-  static constexpr uint64_t kSpeedBlurCompositePs = 0x2047A91B3C7E8F62ull;
+  static constexpr uint64_t kBlurPrepPs = 0x2047A91B3C7E8F62ull;   // carbon_gpu_motion_blur
+  static constexpr uint64_t kBlurBlendPs = 0xD92CA043533999AFull;
   struct PostCensus {  // carbon_gpu_post_census
     uint64_t vs_hash = 0;
     uint32_t draws = 0, width = 0, height = 0, reads = 0;
@@ -598,8 +599,10 @@ class Renderer {
     uint64_t upload_bytes = 0, arena_bytes = 0, arena_draws = 0, chunk_vertex_draws = 0;
     uint32_t evicted = 0, throttled = 0;
     uint32_t cubes_from_faces = 0;  // cube maps put together from resolved faces
-    uint32_t blur_draws = 0;        // speed blur composites (carbon_gpu_motion_blur)
-    float blur_amount_min = 1e30f, blur_amount_max = -1e30f;
+    struct BlurStat {               // carbon_gpu_motion_blur passes
+      uint32_t draws = 0;
+      float min = 1e30f, max = -1e30f;
+    } blur[2];
     double draw_s = 0, resolve_s = 0, swap_s = 0, fence_s = 0, worst_ms = 0;
     // Draw CPU time by phase (carbon_gpu_draw_profile) and upload bytes by kind.
     double phase_s[7] = {};
