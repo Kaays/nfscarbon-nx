@@ -437,6 +437,8 @@ class Renderer {
   void GpuStamp(GpuTag tag, const StampInfo* info = nullptr);
   StampInfo ts_info_[kFramesInFlight][kMaxStamps];
   std::unordered_map<uint64_t, PassAgg> pass_agg_;
+  std::string skip_ps_text_;              // carbon_gpu_skip_ps, as last parsed
+  std::unordered_set<uint64_t> skip_ps_;
   static constexpr uint64_t kSpeedBlurCompositePs = 0xD92CA043533999AFull;
   struct PostCensus {  // carbon_gpu_post_census
     uint64_t vs_hash = 0;

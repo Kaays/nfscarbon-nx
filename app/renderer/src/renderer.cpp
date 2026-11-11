@@ -91,6 +91,9 @@ REXCVAR_DEFINE_BOOL(carbon_gpu_post_census, false, "CarbonGPU",
                     "with their target size and texture reads, to find a post effect's shader");
 REXCVAR_DEFINE_BOOL(carbon_gpu_motion_blur, true, "CarbonGPU",
                     "The game's speed blur (motion blur in races and with the NOS). false = sharp picture");
+REXCVAR_DEFINE_STRING(carbon_gpu_skip_ps, "", "CarbonGPU",
+                      "Debug: pixel shader hashes (16 hex digits, comma separated) whose draws are "
+                      "skipped, to find which pass makes an effect");
 REXCVAR_DEFINE_BOOL(carbon_gpu_bloom, true, "CarbonGPU",
                     "Run the game's bloom blur passes (very heavy on phone GPUs)");
 REXCVAR_DEFINE_BOOL(carbon_gpu_async_pipelines, true, "CarbonGPU",
@@ -2037,6 +2040,30 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
                     uint32_t(info.primitive_type));
       }
       Skip(kSkipPrimitive);
+      return;
+    }
+  }
+
+  if (ps) {
+    const std::string& list = REXCVAR_GET(carbon_gpu_skip_ps);
+    if (list != skip_ps_text_) {
+      skip_ps_text_ = list;
+      skip_ps_.clear();
+      size_t at = 0;
+      while (at < list.size()) {
+        size_t end = list.find(',', at);
+        if (end == std::string::npos) end = list.size();
+        std::string item = list.substr(at, end - at);
+        item.erase(std::remove_if(item.begin(), item.end(), ::isspace), item.end());
+        if (!item.empty()) {
+          skip_ps_.insert(std::strtoull(item.c_str(), nullptr, 16));
+        }
+        at = end + 1;
+      }
+      REXGPU_INFO("[carbon-gpu] skipping the draws of {} pixel shader(s): {}", skip_ps_.size(), list);
+    }
+    if (!skip_ps_.empty() && skip_ps_.count(ps->hash)) {
+      Skip(kSkipNoTarget);
       return;
     }
   }
