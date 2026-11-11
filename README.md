@@ -16,8 +16,9 @@ native Vulkan renderer running on NVK (Mesa).
 > **Playable, with an overclock.** The game boots, the menus, career, cutscenes and races all work, with sound and
 > videos. It **needs an overclock**: at the Switch's stock clocks it does not run well. On the overclock we play
 > with (CPU 1683 / GPU 844 / RAM 2133 MHz) and the fourth CPU core enabled, it holds 28-30 FPS in races and only
-> dips to 24-27 FPS for a few seconds at the start of Race Wars, with clean sound. Long career sessions (2.5 h and
-> more in our tests) run without freezes. Editions: **USA**, **Europe** and **Europe (Nordic)** (see [Edition](#edition)). Latest version: see [Releases](../../releases).
+> dips to about 18-22 FPS at the start of Race Wars, while the whole pack is on screen, with clean sound. Long career
+> sessions (2.5 h and more in our tests) run without freezes. Video settings (motion blur, anti-aliasing, resolution
+> and more) are in the game's own **Options > Video** screen. Editions: **USA**, **Europe** and **Europe (Nordic)** (see [Edition](#edition)). Latest version: see [Releases](../../releases).
 
 ## Where it stands
 
@@ -28,12 +29,31 @@ Tested on a Switch Lite (handheld, 1280x720), USA disc version, all settings as 
 |---|---|---|
 | Menus, free roam, cutscenes | 30 FPS | 30 FPS |
 | Normal races, canyon duels, police chases | 28-30 FPS | 28-30 FPS |
-| Race Wars, first seconds (whole pack on screen) | 24-27 FPS, then 28-30 | 19-24 FPS for 20-40 s, then 26-30 |
+| Race Wars, first seconds (whole pack on screen) | 18-22 FPS, then 28-30 | 19-24 FPS for 20-40 s, then 26-30 |
 | Sound | clean, also at Race Wars starts | some popping at Race Wars starts |
 | Cutscene videos, boss face videos | normal speed | normal speed |
 
 **Stock clocks are not supported**: the game is CPU-bound and the three 1020 MHz cores cannot keep up (low frame
 rate, broken-up sound). Use an overclock (sys-clk or similar).
+
+### Why 30 FPS, and not 60
+
+The target is a **steady 30 FPS**, the frame rate the game was made for on the Xbox 360. 60 FPS is not possible on
+the Switch with this game, for now or with any setting:
+
+- **The CPU is the limit, not the GPU.** Every frame, the Switch's ARM cores run the game's own logic, physics, AI
+  and rendering setup, recompiled from the Xbox 360's PowerPC code. At 1683 MHz on four cores this already takes
+  most of a 33 ms frame in a normal race, and more than that at Race Wars starts. 60 FPS would need every frame done
+  in 16.7 ms: about twice the CPU the Switch has.
+- **Lower resolution does not help.** We measured it: at 360p the frame rate in a crowded race is the same as at
+  720p. The GPU is waiting for the CPU. (1080p, on the other hand, is GPU-bound at about 14-15 FPS on a Switch
+  Lite.)
+- **A steady 30 feels better than an unsteady 40-60.** Frame pacing jumping between 16 and 33 ms looks worse than a
+  locked 30, so the cap (`carbon_gpu_fps_cap = 30`) stays.
+
+What the work goes into instead: keeping 30 in every situation (Race Wars starts are the one place it still dips),
+clean sound, no freezes in long sessions, and the Xbox 360's look (car reflections, motion blur, shadows) without
+shortcuts that show.
 
 ### Known issues
 
