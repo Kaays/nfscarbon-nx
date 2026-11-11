@@ -51,6 +51,7 @@ carbon_gpu_skip_redundant_resolves = false
 carbon_gpu_vertex_arena_mb = 256
 
 # Scene detail (1.0 = the game's own). Below 1, small far objects drop out and lower
+# levels of detail start sooner: fewer draws in crowded scenes (Full 1.0 costs 2-3 FPS there).
 # Also in the game: Options > Video (saved in nfscarbon_options.txt, which wins over this file).
 nfscarbon_lod_bias = 0.6
 
