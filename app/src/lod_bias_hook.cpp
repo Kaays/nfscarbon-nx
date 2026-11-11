@@ -29,8 +29,10 @@ extern "C" void __imp__sub_82586288(PPCContext& __restrict ctx, uint8_t* base);
 extern "C" REX_FUNC(sub_82586288) {
   __imp__sub_82586288(ctx, base);
   const double bias = REXCVAR_GET(nfscarbon_lod_bias);
-  static std::atomic<bool> logged{false};
-  if (!logged.exchange(true, std::memory_order_relaxed)) {
+  // Logged at the first call and whenever it changes (the Options screen's Scene Detail row).
+  static std::atomic<int> logged_centi{-1};
+  const int centi = int(bias * 100.0 + 0.5);
+  if (logged_centi.exchange(centi, std::memory_order_relaxed) != centi) {
     REXLOG_INFO("[lod] scene detail test active, nfscarbon_lod_bias = {:.2f}", bias);
   }
   if (bias < 1.0) {
