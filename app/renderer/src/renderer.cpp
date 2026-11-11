@@ -2207,6 +2207,9 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
   if (pass.color[0] && pass.depth && !pass.color[1]) {
     const RenderTarget* c0 = pass.color[0];
     bool throttle = false;
+    // Read live: the game's Options screen (Video) changes them during play.
+    reflection_faces_ = REXCVAR_GET(carbon_gpu_reflection_faces);
+    mirror_half_rate_ = REXCVAR_GET(carbon_gpu_mirror_half_rate);
     if (c0->pitch == 280 && reflection_faces_ < 6) {
       uint32_t face = cube_face_in_frame_ % 6;
       uint32_t first = uint32_t((frame_number_ * uint64_t(reflection_faces_)) % 6);

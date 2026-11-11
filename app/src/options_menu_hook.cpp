@@ -72,6 +72,12 @@ Row g_rows[] = {
     // nfscarbon_lod_bias: the game's own detail, or small far objects dropping out sooner (fewer
     // draws in crowded races; the shipped toml has 0.6).
     {"scene_detail", "Scene Detail", "Full", "Reduced", "nfscarbon_lod_bias", "1.0", "0.6", false, false},
+    // carbon_gpu_reflection_faces: the six faces of the car reflection cube every frame, or one
+    // face a frame (each face fresh every 6 frames; fewer draws).
+    {"car_reflections", "Car Reflections", "Full", "Reduced", "carbon_gpu_reflection_faces", "6", "1", true, true},
+    // carbon_gpu_mirror_half_rate: the rear-view mirror (and the boss picture-in-picture box)
+    // every frame, or every other frame.
+    {"mirror", "Rear-View Mirror", "Full Rate", "Half Rate", "carbon_gpu_mirror_half_rate", "false", "true", true, true},
 };
 constexpr uint32_t kRowCount = sizeof(g_rows) / sizeof(g_rows[0]);
 
@@ -110,8 +116,10 @@ void LoadOnce() {
     std::string v = rex::cvar::GetFlagByName(r.cvar);
     if (v.empty()) {
       r.value = r.dflt;
+    } else if (v == r.cvar_on || v == r.cvar_off) {
+      r.value = v == r.cvar_on;
     } else if (v == "true" || v == "false") {
-      r.value = v == "true";
+      r.value = r.dflt;
     } else {
       r.value = std::strtod(v.c_str(), nullptr) >= std::strtod(r.cvar_on, nullptr) - 1e-6;
     }
