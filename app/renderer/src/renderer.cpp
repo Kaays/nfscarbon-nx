@@ -94,9 +94,6 @@ REXCVAR_DEFINE_BOOL(carbon_gpu_motion_blur, true, "CarbonGPU",
 REXCVAR_DEFINE_STRING(carbon_gpu_skip_ps, "", "CarbonGPU",
                       "Debug: pixel shader hashes (16 hex digits, comma separated) whose draws are "
                       "skipped, to find which pass makes an effect");
-REXCVAR_DEFINE_INT32(carbon_gpu_motion_blur_pass, 0, "CarbonGPU",
-                     "Debug: which pass carbon_gpu_motion_blur = false zeroes (0 chain start, 1 blend)")
-    .range(0, 1);
 REXCVAR_DEFINE_BOOL(carbon_gpu_bloom, true, "CarbonGPU",
                     "Run the game's bloom blur passes (very heavy on phone GPUs)");
 REXCVAR_DEFINE_BOOL(carbon_gpu_async_pipelines, true, "CarbonGPU",
@@ -2591,31 +2588,24 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
   upload_kind_ = 2;
   // Constants.
   uint32_t dyn_offsets[3];
-  // The speed blur lives in the bloom chain (with carbon_gpu_bloom off it is gone). Two passes
-  // take a per-frame amount in their c0: the chain's first pass (ps 2047A91B3C7E8F62, the half
-  // resolution scene with alpha = dot(mask, c0.xyz)) and a full-screen blend (ps
-  // D92CA043533999AF, sharp + (blurred - sharp) * c0.x * alpha). Both amounts are logged; with
-  // carbon_gpu_motion_blur off the pass picked by carbon_gpu_motion_blur_pass gets its c0
-  // written as 0 in this draw's copy of the constants, so the chain still runs (the pause
-  // screen and in-race cutscenes read it) but blends nothing.
+  // The speed blur: a full-screen blend at the end of the bloom chain (ps D92CA043533999AF),
+  // colour = sharp + (blurred - sharp) * c0.x * alpha, c0.x being the amount the game sets per
+  // frame (0.1 to 1 in a race, rising with speed and the NOS). With carbon_gpu_motion_blur off
+  // c0.x is written as 0 in this draw's copy of the constants: the sharp frame goes through.
+  // The chain itself still runs, as the pause screen and in-race cutscenes read it.
   // c0 in the shader is the first slot of the upload: register 0, or float_constant_map[0]
   // when the shader's constants are packed.
-  int blur_pass = -1;
-  if (ps && ps->hash == kBlurPrepPs) blur_pass = 0;
-  if (ps && ps->hash == kBlurBlendPs) blur_pass = 1;
-  if (blur_pass >= 0) {
+  const bool blur_blend = ps && ps->hash == kSpeedBlurBlendPs;
+  if (blur_blend) {
     const auto& t = ps->translated;
     uint32_t reg = t.float_constants_compact && !t.float_constant_map.empty() ? t.float_constant_map[0] : 0;
-    float c0[3];
-    std::memcpy(c0, &regs.values[kRegFloatConstants + 1024 + reg * 4], 12);
-    float amount = blur_pass == 0 ? std::fabs(c0[0]) + std::fabs(c0[1]) + std::fabs(c0[2]) : c0[0];
-    Stats::BlurStat& b = stats_.blur[blur_pass];
-    ++b.draws;
-    b.min = std::min(b.min, amount);
-    b.max = std::max(b.max, amount);
+    float amount;
+    std::memcpy(&amount, &regs.values[kRegFloatConstants + 1024 + reg * 4], 4);
+    ++stats_.blur_draws;
+    stats_.blur_min = std::min(stats_.blur_min, amount);
+    stats_.blur_max = std::max(stats_.blur_max, amount);
   }
-  const bool kill_blur = blur_pass >= 0 && !REXCVAR_GET(carbon_gpu_motion_blur) &&
-                         blur_pass == REXCVAR_GET(carbon_gpu_motion_blur_pass);
+  const bool kill_blur = blur_blend && !REXCVAR_GET(carbon_gpu_motion_blur);
   for (uint32_t stage = 0; stage < 2; ++stage) {
     Shader* s = stage == 0 ? vs : ps;
     uint32_t n = s ? s->translated.float_constant_count : 0;
@@ -2655,8 +2645,8 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
     if (edit) {
       // c0 is the first slot of the upload, packed or not.
       if (n) {
-        const float zero[3] = {0.0f, 0.0f, 0.0f};
-        std::memcpy(a.ptr, zero, blur_pass == 0 ? 12 : 4);
+        const float zero = 0.0f;
+        std::memcpy(a.ptr, &zero, 4);
       }
     }
     last_constant_map_[stage] = map;
@@ -3384,14 +3374,10 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
             d.base, d.w, d.h, d.fmt, d.src_pitch, d.src_fmt, d.resolves / f, d.dead / f);
       }
     }
-    for (int i = 0; i < 2; ++i) {
-      const Stats::BlurStat& b = stats_.blur[i];
-      if (!b.draws) continue;
-      bool off = !REXCVAR_GET(carbon_gpu_motion_blur) && REXCVAR_GET(carbon_gpu_motion_blur_pass) == i;
-      REXGPU_INFO("[carbon-gpu] speed blur {} ({}): {:.2f}/frame, amount {:.3f}..{:.3f}{}", i,
-                  i == 0 ? "chain start, |c0.xyz|" : "blend, c0.x",
-                  b.draws / double(std::max<uint64_t>(stats_frames_, 1)), b.min, b.max,
-                  off ? " (off: drawn with 0)" : "");
+    if (stats_.blur_draws) {
+      REXGPU_INFO("[carbon-gpu] speed blur: {:.2f}/frame, amount {:.3f}..{:.3f}{}",
+                  stats_.blur_draws / double(std::max<uint64_t>(stats_frames_, 1)), stats_.blur_min,
+                  stats_.blur_max, REXCVAR_GET(carbon_gpu_motion_blur) ? "" : " (off)");
     }
     if (!post_census_.empty()) {
       std::vector<std::pair<uint64_t, const PostCensus*>> top;

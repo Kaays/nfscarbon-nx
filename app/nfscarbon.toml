@@ -24,6 +24,10 @@ carbon_gpu_reflection_faces = 6
 # Rear-view mirror and the boss picture-in-picture box at half rate (choppy box).
 carbon_gpu_mirror_half_rate = false
 
+# The game's speed blur: the picture blurs with speed and the NOS. false = always
+# sharp (no frame rate change: only the final blend is left out).
+carbon_gpu_motion_blur = true
+
 # Skip a resolve when it would copy the same contents again (false = always copy).
 carbon_gpu_skip_redundant_resolves = false
 
