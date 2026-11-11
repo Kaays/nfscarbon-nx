@@ -9,7 +9,8 @@
 // +0x78 / +0x7C the two value texts. Its Draw (vtable +4, sub_82345C90), Act (+0x10,
 // sub_82345B68: pad left/right flips the value) and Reset (+0x20, sub_82345D38) read and
 // write the game's settings by id, in a table indexed by id / 1000. Our rows use ids the game
-// does not have (kIdBase..), so those three are wrapped: for our ids they step our own value.
+// does not have (kIdBase..), so those three are wrapped: for our ids pad left/right steps through
+// the row's values (two or more: the widget only shows the text we set).
 //
 // Labels and values are text hashes of our own. sub_8231F8F8 turns a text hash into the string
 // of the current language (it searches the three loaded string tables); for our hashes it
@@ -23,6 +24,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <cmath>
 #include <cstdlib>
 #include <fstream>
 #include <mutex>
@@ -55,40 +57,51 @@ constexpr uint32_t kAfterId = 0x138D;    // Video screen: its last (only) row
 constexpr uint32_t kIdBase = 18900;      // our ids (id / 1000 = 18: the table's last slot)
 constexpr uint32_t kPadLeft = 0x9120409Eu;
 constexpr uint32_t kPadRight = 0xB5971BF1u;
+constexpr uint32_t kMaxValues = 4;
 
+struct Value {
+  const char* text;  // shown in the menu, and written in nfscarbon_options.txt
+  const char* set;   // "cvar=value;cvar=value"
+};
 struct Row {
-  const char* key;    // in nfscarbon_options.txt
-  const char* label;  // shown in the menu
-  const char* on;     // value texts
-  const char* off;
-  const char* cvar;   // applied with these values
-  const char* cvar_on;
-  const char* cvar_off;
-  bool dflt;
-  bool value;
+  const char* key;  // in nfscarbon_options.txt
+  const char* label;
+  Value values[kMaxValues];
+  uint32_t count;
+  uint32_t dflt;
+  uint32_t value;
 };
 Row g_rows[] = {
-    {"motion_blur", "Motion Blur", "On", "Off", "carbon_gpu_motion_blur", "true", "false", true, true},
+    {"motion_blur", "Motion Blur",
+     {{"On", "carbon_gpu_motion_blur=true"}, {"Off", "carbon_gpu_motion_blur=false"}}, 2, 0, 0},
+    {"antialiasing", "Anti-Aliasing",
+     {{"Off", "carbon_gpu_antialiasing=false"}, {"On", "carbon_gpu_antialiasing=true"}}, 2, 0, 0},
     // nfscarbon_lod_bias: the game's own detail, or small far objects dropping out sooner (fewer
     // draws in crowded races; the shipped toml has 0.6).
-    {"scene_detail", "Scene Detail", "Full", "Reduced", "nfscarbon_lod_bias", "1.0", "0.6", false, false},
-    // carbon_gpu_reflection_faces: the six faces of the car reflection cube every frame, or one
-    // face a frame (each face fresh every 6 frames; fewer draws).
-    {"car_reflections", "Car Reflections", "Full", "Reduced", "carbon_gpu_reflection_faces", "6", "1", true, true},
-    // carbon_gpu_mirror_half_rate: the rear-view mirror (and the boss picture-in-picture box)
-    // every frame, or every other frame.
-    {"mirror", "Rear-View Mirror", "Full Rate", "Half Rate", "carbon_gpu_mirror_half_rate", "false", "true", true, true},
+    {"scene_detail", "Scene Detail",
+     {{"Full", "nfscarbon_lod_bias=1.0"}, {"Reduced", "nfscarbon_lod_bias=0.6"}}, 2, 1, 1},
+    // The car reflection cube: the six faces every frame, one face a frame (each fresh every 6
+    // frames), or none and only the disc's static cube (matte paint, as before v0.4.7; the
+    // fewest draws).
+    {"car_reflections", "Car Reflections",
+     {{"Full", "carbon_gpu_reflection_faces=6;carbon_gpu_cube_from_faces=true"},
+      {"Reduced", "carbon_gpu_reflection_faces=1;carbon_gpu_cube_from_faces=true"},
+      {"Off", "carbon_gpu_reflection_faces=0;carbon_gpu_cube_from_faces=false"}},
+     3, 0, 0},
+    // The rear-view mirror (and the boss picture-in-picture box) every frame or every other one.
+    {"mirror", "Rear-View Mirror",
+     {{"Full Rate", "carbon_gpu_mirror_half_rate=false"}, {"Half Rate", "carbon_gpu_mirror_half_rate=true"}},
+     2, 0, 0},
 };
 constexpr uint32_t kRowCount = sizeof(g_rows) / sizeof(g_rows[0]);
 
-// Text hashes of our strings: per row its label, on text and off text.
+// Text hashes of our strings: per row its label, then its values.
 constexpr uint32_t kTextBase = 0x7A5E0100u;
-uint32_t LabelHash(uint32_t row) { return kTextBase + row * 3; }
-uint32_t OnHash(uint32_t row) { return kTextBase + row * 3 + 1; }
-uint32_t OffHash(uint32_t row) { return kTextBase + row * 3 + 2; }
+constexpr uint32_t kTextsPerRow = 1 + kMaxValues;
+uint32_t TextHash(uint32_t row, uint32_t k) { return kTextBase + row * kTextsPerRow + k; }
 
 std::mutex g_mutex;
-uint32_t g_strings = 0;  // guest block: 3 strings of kStringBytes per row
+uint32_t g_strings = 0;  // guest block: kTextsPerRow strings of kStringBytes per row
 constexpr uint32_t kStringBytes = 48;
 uint32_t g_scratch = 0;  // guest word for the constructor's label pointer
 std::atomic<bool> g_loaded{false};
@@ -97,7 +110,34 @@ std::filesystem::path OptionsPath() {
   return rex::filesystem::GetExecutableFolder() / "nfscarbon_options.txt";
 }
 
-void Apply(const Row& r) { rex::cvar::SetFlagByName(r.cvar, r.value ? r.cvar_on : r.cvar_off); }
+// Calls f(cvar, value) for each "cvar=value" of a value's settings.
+template <typename F>
+void ForEachSetting(const char* set, F f) {
+  std::string all = set;
+  size_t at = 0;
+  while (at < all.size()) {
+    size_t end = all.find(';', at);
+    if (end == std::string::npos) end = all.size();
+    std::string item = all.substr(at, end - at);
+    size_t eq = item.find('=');
+    if (eq != std::string::npos) f(item.substr(0, eq), item.substr(eq + 1));
+    at = end + 1;
+  }
+}
+
+void Apply(const Row& r) {
+  ForEachSetting(r.values[r.value].set, [](const std::string& cvar, const std::string& v) {
+    rex::cvar::SetFlagByName(cvar, v);
+  });
+}
+
+bool SameSetting(const std::string& now, const std::string& want) {
+  if (now == want) return true;
+  char* e1 = nullptr;
+  char* e2 = nullptr;
+  double a = std::strtod(now.c_str(), &e1), b = std::strtod(want.c_str(), &e2);
+  return e1 != now.c_str() && e2 != want.c_str() && std::abs(a - b) < 1e-3;
+}
 
 void Save() {
   std::ofstream f(OptionsPath(), std::ios::trunc);
@@ -106,22 +146,23 @@ void Save() {
     return;
   }
   f << "# nfscarbon-nx: settings changed in the game's Options screen (they win over nfscarbon.toml)\n";
-  for (const Row& r : g_rows) f << r.key << "=" << (r.value ? 1 : 0) << "\n";
+  for (const Row& r : g_rows) f << r.key << "=" << r.values[r.value].text << "\n";
 }
 
-// Values from the file; rows not in it keep the toml's value (read back from the cvar).
+// Rows start from the value matching the cvars (the toml), then the file overrides them.
 void LoadOnce() {
   if (g_loaded.exchange(true)) return;
   for (Row& r : g_rows) {
-    std::string v = rex::cvar::GetFlagByName(r.cvar);
-    if (v.empty()) {
-      r.value = r.dflt;
-    } else if (v == r.cvar_on || v == r.cvar_off) {
-      r.value = v == r.cvar_on;
-    } else if (v == "true" || v == "false") {
-      r.value = r.dflt;
-    } else {
-      r.value = std::strtod(v.c_str(), nullptr) >= std::strtod(r.cvar_on, nullptr) - 1e-6;
+    r.value = r.dflt;
+    for (uint32_t k = 0; k < r.count; ++k) {
+      bool all = true;
+      ForEachSetting(r.values[k].set, [&](const std::string& cvar, const std::string& v) {
+        all = all && SameSetting(rex::cvar::GetFlagByName(cvar), v);
+      });
+      if (all) {
+        r.value = k;
+        break;
+      }
     }
   }
   std::ifstream f(OptionsPath());
@@ -131,12 +172,19 @@ void LoadOnce() {
     size_t eq = line.find('=');
     if (line.empty() || line[0] == '#' || eq == std::string::npos) continue;
     std::string k = line.substr(0, eq), v = line.substr(eq + 1);
+    while (!v.empty() && (v.back() == '\r' || v.back() == ' ')) v.pop_back();
     for (Row& r : g_rows) {
-      if (k == r.key) {
-        r.value = v == "1" || v == "true";
-        Apply(r);
-        ++n;
+      if (k != r.key) continue;
+      int pick = -1;
+      for (uint32_t i = 0; i < r.count; ++i) {
+        if (v == r.values[i].text) pick = int(i);
       }
+      // Older files: 1 = the first value, 0 = the second.
+      if (pick < 0 && (v == "1" || v == "0")) pick = v == "1" ? 0 : 1;
+      if (pick < 0) continue;
+      r.value = uint32_t(pick);
+      Apply(r);
+      ++n;
     }
   }
   REXLOG_INFO("[menu] {} setting(s) from {}", n, OptionsPath().string());
@@ -148,14 +196,14 @@ int RowOf(uint32_t id) {
 
 void PutString(uint8_t* base, uint32_t at, const char* s) {
   uint32_t i = 0;
-  for (; s[i] && i + 1 < kStringBytes; ++i) REX_STORE_U8(at + i, uint8_t(s[i]));
+  for (; s && s[i] && i + 1 < kStringBytes; ++i) REX_STORE_U8(at + i, uint8_t(s[i]));
   REX_STORE_U8(at + i, 0);
 }
 
 // Guest memory for our strings and the scratch word, taken once from the game's allocator.
 bool EnsureGuestMemory(PPCContext& ctx, uint8_t* base) {
   if (g_strings) return true;
-  ctx.r3.u64 = kRowCount * 3 * kStringBytes + 16;
+  ctx.r3.u64 = kRowCount * kTextsPerRow * kStringBytes + 16;
   ctx.r4.u64 = 0;
   ctx.r5.u64 = 0;
   ctx.r6.u64 = 0;
@@ -163,9 +211,11 @@ bool EnsureGuestMemory(PPCContext& ctx, uint8_t* base) {
   uint32_t block = ctx.r3.u32;
   if (!block) return false;
   for (uint32_t i = 0; i < kRowCount; ++i) {
-    PutString(base, block + 16 + (i * 3 + 0) * kStringBytes, g_rows[i].label);
-    PutString(base, block + 16 + (i * 3 + 1) * kStringBytes, g_rows[i].on);
-    PutString(base, block + 16 + (i * 3 + 2) * kStringBytes, g_rows[i].off);
+    PutString(base, block + 16 + (i * kTextsPerRow) * kStringBytes, g_rows[i].label);
+    for (uint32_t k = 0; k < kMaxValues; ++k) {
+      PutString(base, block + 16 + (i * kTextsPerRow + 1 + k) * kStringBytes,
+                k < g_rows[i].count ? g_rows[i].values[k].text : "");
+    }
   }
   g_scratch = block;
   g_strings = block + 16;
@@ -173,7 +223,7 @@ bool EnsureGuestMemory(PPCContext& ctx, uint8_t* base) {
 }
 
 uint32_t StringFor(uint32_t hash) {
-  if (!g_strings || hash < kTextBase || hash >= kTextBase + kRowCount * 3) return 0;
+  if (!g_strings || hash < kTextBase || hash >= kTextBase + kRowCount * kTextsPerRow) return 0;
   return g_strings + (hash - kTextBase) * kStringBytes;
 }
 
@@ -196,12 +246,12 @@ void AddRow(PPCContext& ctx, uint8_t* base, uint32_t screen, uint32_t row) {
   sub_821A3320(ctx, base);
   uint32_t widget = ctx.r3.u32;
   if (!widget) return;
-  REX_STORE_U32(g_scratch, LabelHash(row));
+  REX_STORE_U32(g_scratch, TextHash(row, 0));
   ctx.r3.u64 = widget;
   ctx.r4.u64 = g_scratch;
   ctx.r5.u64 = kIdBase + row;
-  ctx.r6.u64 = OnHash(row);
-  ctx.r7.u64 = OffHash(row);
+  ctx.r6.u64 = TextHash(row, 1);
+  ctx.r7.u64 = TextHash(row, 2);
   ctx.r8.u64 = 1;
   sub_82345AE0(ctx, base);
   ctx.r3.u64 = screen;
@@ -210,11 +260,11 @@ void AddRow(PPCContext& ctx, uint8_t* base, uint32_t screen, uint32_t row) {
   sub_82313730(ctx, base);
 }
 
-void DrawValue(PPCContext& ctx, uint8_t* base, uint32_t widget, const Row& r) {
+void DrawValue(PPCContext& ctx, uint8_t* base, uint32_t widget, uint32_t row) {
   uint32_t text = REX_LOAD_U32(widget + 0x1C);
   if (!text) return;
   ctx.r3.u64 = text;
-  ctx.r4.u64 = REX_LOAD_U32(widget + (r.value ? 0x78 : 0x7C));
+  ctx.r4.u64 = TextHash(row, 1 + g_rows[row].value);
   sub_822FA300(ctx, base);
 }
 
@@ -252,7 +302,7 @@ extern "C" REX_FUNC(sub_82345C90) {
     __imp__sub_82345C90(ctx, base);
     return;
   }
-  DrawValue(ctx, base, widget, g_rows[row]);
+  DrawValue(ctx, base, widget, uint32_t(row));
 }
 
 // On/off widget Act (r5 = the pad event).
@@ -265,13 +315,13 @@ extern "C" REX_FUNC(sub_82345B68) {
   }
   if (!REX_LOAD_U8(widget + 0x64) || (pad != kPadLeft && pad != kPadRight)) return;
   Row& r = g_rows[row];
-  r.value = !r.value;
+  r.value = pad == kPadRight ? (r.value + 1) % r.count : (r.value + r.count - 1) % r.count;
   Apply(r);
   Save();
-  REXLOG_INFO("[menu] {} = {}", r.key, r.value ? r.on : r.off);
+  REXLOG_INFO("[menu] {} = {}", r.key, r.values[r.value].text);
   ctx.r4.u64 = pad;
   CallVirtual(ctx, base, widget, 0x38);  // what the game does after a change
-  DrawValue(ctx, base, widget, r);
+  DrawValue(ctx, base, widget, uint32_t(row));
 }
 
 // On/off widget Reset ("restore defaults").
@@ -288,7 +338,7 @@ extern "C" REX_FUNC(sub_82345D38) {
     Apply(r);
     Save();
   }
-  DrawValue(ctx, base, widget, r);
+  DrawValue(ctx, base, widget, uint32_t(row));
 }
 
 // Text lookup (hash -> string of the current language).

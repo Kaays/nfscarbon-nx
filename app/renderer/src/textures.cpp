@@ -9,9 +9,14 @@
 #include <chrono>
 #include <cmath>
 
+#include <rex/cvar.h>
 #include <rex/ui/vulkan/device.h>
 
 #include "renderer.h"
+
+REXCVAR_DEFINE_BOOL(carbon_gpu_cube_from_faces, true, "CarbonGPU",
+                    "Car reflection cube put together from the faces the game draws (false: the "
+                    "paint reflects only the disc's static cube, as before v0.4.7)");
 
 namespace carbon::gpu {
 
@@ -467,7 +472,8 @@ Texture* Renderer::GetCubeFromResolvedFaces(const GuestTexture& guest) {
 
 Texture* Renderer::GetTexture(const GuestTexture& guest, bool allow_upload) {
   uint32_t key = (guest.base_address ? guest.base_address : guest.mip_address) & 0x1FFFFFFF;
-  if (guest.base_address && guest.dimension == xenos::DataDimension::kCube) {
+  if (guest.base_address && guest.dimension == xenos::DataDimension::kCube &&
+      REXCVAR_GET(carbon_gpu_cube_from_faces)) {
     if (Texture* c = GetCubeFromResolvedFaces(guest)) {
       return c;
     }

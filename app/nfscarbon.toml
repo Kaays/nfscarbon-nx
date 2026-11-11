@@ -31,6 +31,10 @@ carbon_gpu_mirror_half_rate = false
 # Also in the game: Options > Video (saved in nfscarbon_options.txt, which wins over this file).
 carbon_gpu_motion_blur = true
 
+# Edge smoothing on the finished frame (about 1 ms per frame at 720p).
+# Also in the game: Options > Video (saved in nfscarbon_options.txt, which wins over this file).
+carbon_gpu_antialiasing = false
+
 # Skip a resolve when it would copy the same contents again (false = always copy).
 carbon_gpu_skip_redundant_resolves = false
 

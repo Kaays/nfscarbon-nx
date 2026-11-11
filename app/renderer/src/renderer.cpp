@@ -89,6 +89,8 @@ REXCVAR_DEFINE_BOOL(carbon_gpu_mirror_half_rate, false, "CarbonGPU",
 REXCVAR_DEFINE_BOOL(carbon_gpu_post_census, false, "CarbonGPU",
                     "Debug: every 5 s log the pixel shaders of the screen-space draws (no depth target) "
                     "with their target size and texture reads, to find a post effect's shader");
+REXCVAR_DEFINE_BOOL(carbon_gpu_antialiasing, false, "CarbonGPU",
+                    "Edge smoothing on the finished frame (in the present pass, about 1 ms at 720p)");
 REXCVAR_DEFINE_BOOL(carbon_gpu_motion_blur, true, "CarbonGPU",
                     "The game's speed blur (motion blur in races and with the NOS). false = sharp picture");
 REXCVAR_DEFINE_STRING(carbon_gpu_skip_ps, "", "CarbonGPU",
@@ -2842,10 +2844,57 @@ void main() {
   static const char* kPs = R"(#version 450
 layout(set = 0, binding = 0) uniform sampler2D xe_source;
 layout(std430, set = 0, binding = 1) readonly buffer XeGamma { uint table[256]; } xe_gamma;
-layout(push_constant) uniform XePresent { vec2 scale; uint use_gamma; uint swap_rb; } xe_p;
+layout(push_constant) uniform XePresent { vec2 scale; uint use_gamma; uint swap_rb; uint aa; } xe_p;
 layout(location = 0) out vec4 xe_out;
+float xe_luma(vec2 uv) { return dot(texture(xe_source, uv).rgb, vec3(0.299, 0.587, 0.114)); }
+// Edge smoothing on the finished frame (carbon_gpu_antialiasing): find where the brightness
+// jumps, tell a horizontal edge from a vertical one, walk a few texels along it to see how far
+// this pixel is from its end, and shift the sample across the edge by that much (bilinear: a
+// blend with the neighbour). Flat areas cost five reads and are left alone.
+vec4 xe_smooth(vec2 uv, vec2 t) {
+  vec4 cM = texture(xe_source, uv);
+  float lM = dot(cM.rgb, vec3(0.299, 0.587, 0.114));
+  float lN = xe_luma(uv + vec2(0.0, -t.y)), lS = xe_luma(uv + vec2(0.0, t.y));
+  float lW = xe_luma(uv + vec2(-t.x, 0.0)), lE = xe_luma(uv + vec2(t.x, 0.0));
+  float lo = min(lM, min(min(lN, lS), min(lW, lE)));
+  float hi = max(lM, max(max(lN, lS), max(lW, lE)));
+  float range = hi - lo;
+  if (range < max(0.04, hi * 0.15)) return cM;
+  float lNW = xe_luma(uv - t), lSE = xe_luma(uv + t);
+  float lNE = xe_luma(uv + vec2(t.x, -t.y)), lSW = xe_luma(uv + vec2(-t.x, t.y));
+  float across_h = abs(lNW + lNE - 2.0 * lN) + 2.0 * abs(lW + lE - 2.0 * lM) + abs(lSW + lSE - 2.0 * lS);
+  float across_v = abs(lNW + lSW - 2.0 * lW) + 2.0 * abs(lN + lS - 2.0 * lM) + abs(lNE + lSE - 2.0 * lE);
+  bool horizontal = across_h >= across_v;
+  float l1 = horizontal ? lN : lW, l2 = horizontal ? lS : lE;
+  vec2 across = horizontal ? vec2(0.0, t.y) : vec2(t.x, 0.0);
+  vec2 along = horizontal ? vec2(t.x, 0.0) : vec2(0.0, t.y);
+  float g1 = abs(l1 - lM), g2 = abs(l2 - lM);
+  float lOther = g1 >= g2 ? l1 : l2;
+  if (g1 >= g2) across = -across;
+  float lEdge = 0.5 * (lM + lOther);
+  float limit = 0.25 * max(g1, g2);
+  vec2 onEdge = uv + across * 0.5;
+  vec2 p1 = onEdge - along, p2 = onEdge + along;
+  float d1 = 1.0, d2 = 1.0, e1 = 0.0, e2 = 0.0;
+  bool end1 = false, end2 = false;
+  for (int i = 0; i < 6; ++i) {
+    if (!end1) { e1 = xe_luma(p1) - lEdge; end1 = abs(e1) >= limit; if (!end1) { p1 -= along * 1.5; d1 += 1.5; } }
+    if (!end2) { e2 = xe_luma(p2) - lEdge; end2 = abs(e2) >= limit; if (!end2) { p2 += along * 1.5; d2 += 1.5; } }
+    if (end1 && end2) break;
+  }
+  bool nearer1 = d1 < d2;
+  float dist = min(d1, d2);
+  bool turns = ((nearer1 ? e1 : e2) < 0.0) != (lM - lEdge < 0.0);
+  float shift = turns ? 0.5 - dist / (d1 + d2) : 0.0;
+  float avg = (2.0 * (lN + lS + lW + lE) + lNW + lNE + lSW + lSE) / 12.0;
+  float sub = clamp(abs(avg - lM) / range, 0.0, 1.0);
+  sub = sub * sub * (3.0 - 2.0 * sub);
+  shift = max(shift, sub * sub * 0.75);
+  return texture(xe_source, uv + across * shift);
+}
 void main() {
-  vec4 c = texture(xe_source, gl_FragCoord.xy * xe_p.scale);
+  vec2 uv = gl_FragCoord.xy * xe_p.scale;
+  vec4 c = xe_p.aa != 0u ? xe_smooth(uv, xe_p.scale) : texture(xe_source, uv);
   if (xe_p.swap_rb != 0u) c = c.bgra;
   if (xe_p.use_gamma != 0u) {
     uvec3 i = uvec3(clamp(c.rgb, 0.0, 1.0) * 255.0 + 0.5);
@@ -2873,7 +2922,7 @@ void main() {
   lci.bindingCount = 2;
   lci.pBindings = b;
   dfn.vkCreateDescriptorSetLayout(vk_device_, &lci, nullptr, &present_set_layout_);
-  VkPushConstantRange pc = {VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16};
+  VkPushConstantRange pc = {VK_SHADER_STAGE_FRAGMENT_BIT, 0, 20};
   VkPipelineLayoutCreateInfo plci = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
   plci.setLayoutCount = 1;
   plci.pSetLayouts = &present_set_layout_;
@@ -3001,11 +3050,13 @@ void Renderer::RecordPresent(VkCommandBuffer cb, VkImageView source, uint32_t so
       float scale[2];
       uint32_t use_gamma;
       uint32_t swap_rb;
-    } pc = {{1.0f / float(source_width), 1.0f / float(source_height)}, 1, swap_rb ? 1u : 0u};
+      uint32_t aa;
+    } pc = {{1.0f / float(source_width), 1.0f / float(source_height)}, 1, swap_rb ? 1u : 0u,
+            REXCVAR_GET(carbon_gpu_antialiasing) ? 1u : 0u};
     // The guest output may be smaller than the source image (padded resolves).
     pc.scale[0] = source_scale / float(source_width);
     pc.scale[1] = source_scale / float(source_height);
-    dfn.vkCmdPushConstants(cb, present_pipeline_layout_, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16, &pc);
+    dfn.vkCmdPushConstants(cb, present_pipeline_layout_, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 20, &pc);
     VkViewport vp = {0.0f, 0.0f, float(width), float(height), 0.0f, 1.0f};
     VkRect2D sc = {{0, 0}, {width, height}};
     dfn.vkCmdSetViewport(cb, 0, 1, &vp);
