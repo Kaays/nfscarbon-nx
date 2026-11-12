@@ -1,0 +1,23 @@
+# nfscarbon-nx: code generator options for the es edition (see overrides.toml for what they do).
+# setjmp found by tools/make_edition_manifest.py (usa 0x8279D060).
+
+cr_as_local = true
+non_volatile_as_local = false
+xer_as_local = true
+ctr_as_local = true
+
+[functions]
+# Bounds set by hand (pal2 0x827CFDA8): a switch table the scanner misses.
+"0x827CFDE8" = { end = 0x827D0340 }
+# setjmp: share_registers so the jmp_buf gets the caller's cr.
+"0x8279BFF0" = { share_registers = true }
+
+[[switch_tables]]
+address = 0x827D003C
+register = 11
+labels = [0x827D0050, 0x827D005C, 0x827D0068, 0x827D0050]
+
+[[switch_tables]]
+address = 0x827D01F8
+register = 11
+labels = [0x827D020C, 0x827D0224, 0x827D024C, 0x827D020C]
