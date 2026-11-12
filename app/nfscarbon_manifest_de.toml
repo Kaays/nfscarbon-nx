@@ -700,6 +700,22 @@ includes = ["overrides_de.toml"]
 0x82A66D58 = {}  # fr 0x82A665B8
 0x82A66D60 = {}  # fr 0x82A665C0
 0x82A84850 = {}  # usa 0x82A85160
+# Repeated code the instruction match skips (same instructions as fr, same place in the run):
+0x82189528 = {}  # fr 0x82189528
+0x82189548 = {}  # fr 0x82189548
+0x82189568 = {}  # fr 0x82189568
+0x82189588 = {}  # fr 0x82189588
+0x821895A8 = {}  # fr 0x821895A8
+0x821895C8 = {}  # fr 0x821895C8
+0x821895E8 = {}  # fr 0x821895E8
+0x82189608 = {}  # fr 0x82189608
+0x82189628 = {}  # fr 0x82189628
+0x82189648 = {}  # fr 0x82189648
+0x82189668 = {}  # fr 0x82189668
+0x82189688 = {}  # fr 0x82189688
+0x821896A8 = {}  # fr 0x821896A8
+0x8228E9A8 = {}  # fr 0x8228E9A8
+0x825764A8 = {}  # fr 0x82575ED8
 # This-adjust thunks (tools/add_thunks.py)
 0x8216D628 = {}  # r3 -88, to 0x82142598
 0x8216D630 = {}  # r3 -48, to 0x82159DA0
