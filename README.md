@@ -64,7 +64,7 @@ shortcuts that show.
   (`cache/carbon_gpu`), and later sessions start smoothly.
 - **Rare crashes in police chases**: twice in the Europe (Nordic) build (once at heat level 1, once in a heavy chase), the
   game found an object it expects missing. The same code is in the USA build; cause not found yet.
-- **Neville's garage cutscene** at the start of the career (Europe (Nordic) build): with the muscle car Neville stays
+- **Neville's garage cutscene** at the start of the career (all European builds; USA not checked lately): with the muscle car Neville stays
   hidden, as if something stood in front of him; with the tuner the view is blocked only for a moment. With the
   exotic car and in later cutscenes it is fine.
 
