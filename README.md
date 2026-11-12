@@ -266,7 +266,7 @@ boundary there and the code generator missed it.
 - groups of identical small functions cannot be matched by their instructions, so they were added by hand.
 
 All run at about the same speed as USA with the fourth core and a profile-guided build. The game's own menus and
-subtitles are in the disc's language; the Options > Video rows added by this port are in English.
+subtitles are in the disc's language.
 
 **Next**: the Collector's Editions. A disc whose `default.xex` has the same SHA-1 as one in the table above already
 works with that NRO.
