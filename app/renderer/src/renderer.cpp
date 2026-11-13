@@ -43,6 +43,10 @@ REXCVAR_DEFINE_BOOL(carbon_gpu_stats, true, "CarbonGPU",
                     "Log renderer statistics (fps, draws, passes, uploads) every 5 seconds");
 REXCVAR_DEFINE_INT32(carbon_gpu_trace_frame, 0, "CarbonGPU",
                      "Log every pass, draw and resolve of this frame number (0 = off)");
+REXCVAR_DEFINE_BOOL(carbon_gpu_user_clip_planes, true, "CarbonGPU",
+                    "Honour the game's user clip planes (PA_CL_CLIP_CNTL). In-car cutscenes cut "
+                    "away the near side of the car with them; without them the body covers the "
+                    "camera (Neville's garage at the start of the career)");
 REXCVAR_DEFINE_INT32(carbon_gpu_trace_interval, 0, "CarbonGPU",
                      "Debug: log every pass, draw (with its textures) and resolve of one frame in N "
                      "(0 = off). Use with carbon_gpu_dump_frame_interval at the same N to get the "
@@ -2287,6 +2291,21 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
   VertexShaderVariant vs_variant;
   vs_variant.interpolator_count = interpolators;
   vs_variant.rect_list = expand == Expand::kRectList;
+  auto clip_cntl = regs.Get<reg::PA_CL_CLIP_CNTL>();
+  const uint32_t ucp_mask = clip_cntl.clip_disable ? 0u : uint32_t(clip_cntl.ucp_ena);
+  vs_variant.clip_planes = ucp_mask && !vs_variant.rect_list &&
+                           REXCVAR_GET(carbon_gpu_user_clip_planes) &&
+                           vulkan_device_->properties().shaderClipDistance;
+  if (ucp_mask) {
+    ++stats_.ucp_draws;
+    stats_.ucp_masks |= ucp_mask;
+    if (!ucp_logged_) {
+      ucp_logged_ = true;
+      REXGPU_INFO("[carbon-gpu] the game uses user clip planes (mask {:02X}, ps_ucp_mode {}){}",
+                  ucp_mask, uint32_t(clip_cntl.ps_ucp_mode),
+                  vs_variant.clip_planes ? "" : ": not applied");
+    }
+  }
   VkShaderModule vs_module = GetVertexShaderModule(vs, vs_variant);
   VkShaderModule ps_module = null_ps_module_;
   if (ps) {
@@ -2407,6 +2426,12 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
   consts.vtx[1] = regs[XE_GPU_REG_VGT_INDX_OFFSET] & 0xFFFFFF;
   consts.vtx[2] = regs[XE_GPU_REG_VGT_MIN_VTX_INDX] & 0xFFFFFF;
   consts.vtx[3] = regs[XE_GPU_REG_VGT_MAX_VTX_INDX] & 0xFFFFFF;
+  if (vs_variant.clip_planes) {
+    consts.clip[0] = ucp_mask;
+    for (uint32_t i = 0; i < 6 * 4; ++i) {
+      consts.ucp[i] = regs.GetFloat(XE_GPU_REG_PA_CL_UCP_0_X + i);
+    }
+  }
   if (consts.vtx[3] < consts.vtx[2]) {
     consts.vtx[3] = 0xFFFFFF;
   }
@@ -3448,6 +3473,11 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
             "{:.2f}/frame overwritten before sampled",
             d.base, d.w, d.h, d.fmt, d.src_pitch, d.src_fmt, d.resolves / f, d.dead / f);
       }
+    }
+    if (stats_.ucp_draws) {
+      REXGPU_INFO("[carbon-gpu] user clip planes: {:.1f} draws/frame (planes {:02X}){}",
+                  stats_.ucp_draws / double(std::max<uint64_t>(stats_frames_, 1)), stats_.ucp_masks,
+                  REXCVAR_GET(carbon_gpu_user_clip_planes) ? "" : " (off)");
     }
     if (stats_.blur_draws) {
       REXGPU_INFO("[carbon-gpu] speed blur: {:.2f}/frame, amount {:.3f}..{:.3f}{}",

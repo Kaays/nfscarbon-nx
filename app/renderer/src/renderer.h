@@ -604,6 +604,8 @@ class Renderer {
     uint32_t evicted = 0, throttled = 0;
     uint32_t cubes_from_faces = 0;  // cube maps put together from resolved faces
     uint32_t blur_draws = 0;        // speed blur blends (carbon_gpu_motion_blur)
+    uint32_t ucp_draws = 0;         // draws with user clip planes on
+    uint32_t ucp_masks = 0;         // which planes
     float blur_min = 1e30f, blur_max = -1e30f;
     double draw_s = 0, resolve_s = 0, swap_s = 0, fence_s = 0, worst_ms = 0;
     // Draw CPU time by phase (carbon_gpu_draw_profile) and upload bytes by kind.
@@ -631,6 +633,7 @@ class Renderer {
   }
   // Frame tracing (carbon_gpu_trace_frame): logs every pass, draw and resolve.
   bool tracing_ = false;
+  bool ucp_logged_ = false;
   uint64_t stats_frames_ = 0;
   double stats_start_ = 0.0;
   // Frame pacing for the Android fps overlay (rex_gpu_report_fps), every 0.5 s.

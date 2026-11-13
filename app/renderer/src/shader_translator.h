@@ -71,6 +71,7 @@ TranslatedShader TranslateShader(xenos::ShaderType type, const uint32_t* ucode,
 struct VertexShaderVariant {
   uint32_t interpolator_count = 0;  // PS inputs to feed (0-16).
   bool rect_list = false;           // 3 guest vertices -> 2 host triangles.
+  bool clip_planes = false;         // write gl_ClipDistance for the user clip planes.
   bool operator==(const VertexShaderVariant&) const = default;
 };
 
@@ -101,6 +102,8 @@ struct DrawConstants {
   float alpha_test[4];          // x: reference, y: function (0-7), z: enabled
   float point[4];               // x: point size (pixels), y: min, z: max
   float pixel_pos[4];           // xy: scale for param gen (1), zw: offset (window + half pixel)
+  float ucp[6 * 4];             // user clip planes (PA_CL_UCP_n), in the guest's clip space
+  uint32_t clip[4];             // x: enabled user clip planes (PA_CL_CLIP_CNTL ucp_ena)
   uint32_t vfetch[96 * 2];      // per fetch constant: base dword in vertex data, endian
   float tex_size[32 * 4];       // per fetch constant: width, height, depth, exp scale
   uint32_t tex_info[32 * 4];    // x: signs (2 bits each), y: stacked, z: dimension, w: unused

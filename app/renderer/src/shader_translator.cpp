@@ -1214,6 +1214,8 @@ layout(std140, set = 0, binding = 2) uniform XeDraw {
   vec4 alpha_test;
   vec4 point;
   vec4 pixel_pos;
+  vec4 ucp[6];
+  uvec4 clip;
   uvec4 vfetch[48];
   vec4 tex_size[32];
   uvec4 tex_info[32];
@@ -1286,7 +1288,9 @@ uint xe_swap(uint v, uint e) {
   for (uint32_t i = 0; i < v.interpolator_count; ++i) {
     g += fmt::format("layout(location = {}) out vec4 xe_out{};\n", i, i);
   }
-  g += "out gl_PerVertex { vec4 gl_Position; float gl_PointSize; };\n";
+  g += v.clip_planes
+           ? "out gl_PerVertex { vec4 gl_Position; float gl_PointSize; float gl_ClipDistance[6]; };\n"
+           : "out gl_PerVertex { vec4 gl_Position; float gl_PointSize; };\n";
   g += R"(
 vec4 xe_e_pos;
 vec4 xe_e_interp[16];
@@ -1326,6 +1330,14 @@ vec4 xe_host_position(vec4 p) {
   if (!v.rect_list) {
     g += "  xe_shader(xe_guest_index(uint(gl_VertexIndex)));\n";
     g += "  gl_Position = xe_host_position(xe_e_pos);\n";
+    if (v.clip_planes) {
+      // User clip planes, as the Xenos applies them: on the position the shader exported (clip
+      // space), before the viewport transform. A disabled plane keeps everything.
+      g += "  for (int i = 0; i < 6; ++i) {\n"
+           "    gl_ClipDistance[i] = ((xe_draw.clip.x >> uint(i)) & 1u) != 0u\n"
+           "        ? dot(xe_e_pos, xe_draw.ucp[i]) : 1.0;\n"
+           "  }\n";
+    }
     for (uint32_t i = 0; i < v.interpolator_count; ++i) {
       g += fmt::format("  xe_out{} = xe_e_interp[{}];\n", i, i);
     }
