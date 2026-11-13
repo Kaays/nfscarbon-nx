@@ -394,6 +394,7 @@ struct Renderer::PipelineKey {
   uint32_t write_mask[4];
   uint32_t alpha_to_coverage;
   uint32_t depth_clamp;
+  uint32_t reserved = 0;  // keeps the key free of padding (hashed as bytes)
 };
 
 Renderer::Renderer() = default;
