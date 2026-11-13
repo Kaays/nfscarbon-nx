@@ -43,6 +43,12 @@ REXCVAR_DEFINE_BOOL(carbon_gpu_stats, true, "CarbonGPU",
                     "Log renderer statistics (fps, draws, passes, uploads) every 5 seconds");
 REXCVAR_DEFINE_INT32(carbon_gpu_trace_frame, 0, "CarbonGPU",
                      "Log every pass, draw and resolve of this frame number (0 = off)");
+REXCVAR_DEFINE_BOOL(carbon_gpu_always_depth_clamp, false, "CarbonGPU",
+                    "Clamp depth instead of clipping at the near and far planes in every draw (as "
+                    "before v0.6.1). Off: only when the game turns clipping off "
+                    "(PA_CL_CLIP_CNTL clip_disable), as the Xenos does. Clamping everything drew "
+                    "geometry behind the camera across the screen when a cutscene camera sat "
+                    "inside a car (Neville's garage at the start of the career)");
 REXCVAR_DEFINE_BOOL(carbon_gpu_user_clip_planes, true, "CarbonGPU",
                     "Honour the game's user clip planes (PA_CL_CLIP_CNTL). In-car cutscenes cut "
                     "away the near side of the car with them; without them the body covers the "
@@ -217,7 +223,7 @@ namespace carbon::gpu {
 using rex::ui::vulkan::VulkanDevice;
 
 constexpr uint32_t kWarmMagic = 0x4C575043;  // "CPWL"
-constexpr uint32_t kWarmVersion = 1;
+constexpr uint32_t kWarmVersion = 2;  // 2: PipelineKey::depth_clamp
 
 uint64_t HashBytes(const void* data, size_t size, uint64_t seed) {
   return XXH3_64bits_withSeed(data, size, seed);
@@ -387,6 +393,7 @@ struct Renderer::PipelineKey {
   uint32_t blend[4][7];  // enable, src color, dst color, op color, src alpha, dst alpha, op alpha
   uint32_t write_mask[4];
   uint32_t alpha_to_coverage;
+  uint32_t depth_clamp;
 };
 
 Renderer::Renderer() = default;
@@ -1484,7 +1491,7 @@ VkPipeline Renderer::BuildPipeline(const PipelineKey& key, VkPipelineLayout layo
   vp.scissorCount = 1;
   VkPipelineRasterizationStateCreateInfo rs = {
       VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
-  rs.depthClampEnable = vulkan_device_->properties().depthClamp ? VK_TRUE : VK_FALSE;
+  rs.depthClampEnable = key.depth_clamp ? VK_TRUE : VK_FALSE;
   rs.polygonMode = VkPolygonMode(key.polygon_mode);
   rs.cullMode = key.cull_mode;
   rs.frontFace = VkFrontFace(key.front_face);
@@ -2353,6 +2360,8 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
     return;
   }
   key.cull_mode = cull;
+  key.depth_clamp = vulkan_device_->properties().depthClamp &&
+                    (clip_cntl.clip_disable || REXCVAR_GET(carbon_gpu_always_depth_clamp));
   // face: 0 = front is CCW, 1 = front is CW (screen space, y down like Vulkan).
   key.front_face = mode.face ? VK_FRONT_FACE_CLOCKWISE : VK_FRONT_FACE_COUNTER_CLOCKWISE;
   key.polygon_mode = VK_POLYGON_MODE_FILL;
