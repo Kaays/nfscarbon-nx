@@ -13,6 +13,8 @@
 #include <limits>
 #include <mutex>
 
+#include <atomic>
+
 #include <rex/chrono/clock.h>
 #include <rex/cvar.h>
 #include <rex/math.h>
@@ -21,6 +23,13 @@ REXCVAR_DEFINE_BOOL(clock_no_scaling, false, "Clock",
                     "Disable clock scaling (inverted: false = scaling enabled)");
 
 REXCVAR_DEFINE_BOOL(clock_source_raw, false, "Clock", "Use raw clock source without scaling");
+
+REXCVAR_DEFINE_INT32(clock_suspend_gap_ms, 400, "Clock",
+                     "A stretch this long (ms) in which no guest thread read the clock is time the "
+                     "process spent suspended (HOME, sleep): it is left out of the guest's clock, as "
+                     "if the console had never stopped. 0 = keep it. The game's audio came back "
+                     "crackling after HOME, depending on the length of the jump (issue #3)")
+    .range(0, 60000);
 
 namespace rex::chrono {
 
@@ -41,6 +50,8 @@ uint64_t last_guest_tick_count_ = 0;
 uint64_t last_host_tick_count_ = Clock::QueryHostTickCount();
 // Mutex to ensure last_host_tick_count_ and last_guest_tick_count_ are in sync
 std::mutex tick_mutex_;
+// Host time left out of the guest's clock while the process was suspended (clock_suspend_gap_ms).
+std::atomic<uint64_t> suspended_host_ticks_{0};
 
 void RecomputeGuestTickScalar() {
   // Create a rational number with numerator (first) and denominator (second)
@@ -77,6 +88,13 @@ uint64_t UpdateGuestClock() {
     uint64_t host_tick_delta =
         host_tick_count > last_host_tick_count_ ? host_tick_count - last_host_tick_count_ : 0;
     last_host_tick_count_ = host_tick_count;
+    const int32_t gap_ms = REXCVAR_GET(clock_suspend_gap_ms);
+    if (gap_ms > 0 &&
+        host_tick_delta > uint64_t(gap_ms) * Clock::QueryHostTickFrequency() / 1000) {
+      // Suspended: the guest's clock goes on from where it stopped.
+      suspended_host_ticks_.fetch_add(host_tick_delta, std::memory_order_relaxed);
+      host_tick_delta = 0;
+    }
     uint64_t guest_tick_delta =
         host_tick_delta * guest_tick_ratio_.first / guest_tick_ratio_.second;
     last_guest_tick_count_ += guest_tick_delta;
@@ -239,6 +257,10 @@ void Clock::ScaleGuestDurationTimeval(int32_t* tv_sec, int32_t* tv_usec) {
   }
   *tv_sec = int32_t(scaled_sec);
   *tv_usec = int32_t(scaled_usec);
+}
+
+uint64_t Clock::SuspendedHostMillis() {
+  return suspended_host_ticks_.load(std::memory_order_relaxed) * 1000 / QueryHostTickFrequency();
 }
 
 }  // namespace rex::chrono
