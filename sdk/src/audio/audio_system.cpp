@@ -183,7 +183,11 @@ void AudioSystem::WorkerThreadMain() {
       break;
     }
 
-    if (!pumped) {
+    // Only after a failed wait. A timeout has already waited its 500 ms, and sleeping 500 more on
+    // top of it froze the game's audio for half a second whenever HOME or sleep suspended the
+    // process inside that wait: the game's audio server rescue then fired and freed packets the
+    // voice was still playing, and the sound crackled until restart (issue #3).
+    if (!pumped && result.first == rex::thread::WaitResult::kFailed) {
       SCOPE_profile_cpu_i("apu", "Sleep");
       rex::thread::Sleep(std::chrono::milliseconds(500));
     }
