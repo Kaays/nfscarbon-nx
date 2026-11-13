@@ -43,6 +43,11 @@ REXCVAR_DEFINE_BOOL(carbon_gpu_stats, true, "CarbonGPU",
                     "Log renderer statistics (fps, draws, passes, uploads) every 5 seconds");
 REXCVAR_DEFINE_INT32(carbon_gpu_trace_frame, 0, "CarbonGPU",
                      "Log every pass, draw and resolve of this frame number (0 = off)");
+REXCVAR_DEFINE_INT32(carbon_gpu_trace_interval, 0, "CarbonGPU",
+                     "Debug: log every pass, draw (with its textures) and resolve of one frame in N "
+                     "(0 = off). Use with carbon_gpu_dump_frame_interval at the same N to get the "
+                     "picture of each traced frame")
+    .range(0, 100000);
 REXCVAR_DEFINE_INT32(carbon_gpu_dump_frame_interval, 0, "CarbonGPU",
                      "Save the presented guest frame as carbon_frames/frame_<n>.bmp every N frames "
                      "(0 = off)");
@@ -764,8 +769,10 @@ bool Renderer::BeginFrame() {
   }
   f.number = frame_number_;
   frame_open_ = true;
-  tracing_ = REXCVAR_GET(carbon_gpu_trace_frame) > 0 &&
-             frame_number_ == uint64_t(REXCVAR_GET(carbon_gpu_trace_frame));
+  tracing_ = (REXCVAR_GET(carbon_gpu_trace_frame) > 0 &&
+              frame_number_ == uint64_t(REXCVAR_GET(carbon_gpu_trace_frame))) ||
+             (REXCVAR_GET(carbon_gpu_trace_interval) > 0 &&
+              frame_number_ % uint64_t(REXCVAR_GET(carbon_gpu_trace_interval)) == 0);
   if (tracing_) {
     REXGPU_WARN("[carbon-gpu] ---- trace of frame {} ----", frame_number_);
   }

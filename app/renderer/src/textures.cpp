@@ -664,6 +664,16 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
     }
     uint32_t fi = b.fetch_index;
     VkSampler sampler = GetSampler(fetch, b, t && t->resolved);
+    if (tracing_) {
+      REXGPU_WARN(
+          "[carbon-gpu] trace:   tex f{} {} addr {:08X} {}x{}x{} fmt {} dim {} tiled {} -> {}{}{} gen {}",
+          fi, set_index == 1 ? "vs" : "ps", g.base_address, g.width, g.height, g.depth,
+          uint32_t(g.format), uint32_t(g.dimension), g.tiled ? 1 : 0,
+          t ? (t->resolved ? "resolved" : "memory") : "none",
+          t && t->view_type == VK_IMAGE_VIEW_TYPE_CUBE ? " cube" : "",
+          t && t->layers > 1 ? fmt::format(" layers {}", t->layers) : std::string(),
+          t ? t->resolve_gen : 0);
+    }
     // Per-fetch-constant parameters for the shader.
     uint32_t signs_in[4] = {uint32_t(fetch.sign_x), uint32_t(fetch.sign_y), uint32_t(fetch.sign_z),
                             uint32_t(fetch.sign_w)};
