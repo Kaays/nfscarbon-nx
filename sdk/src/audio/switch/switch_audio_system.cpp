@@ -395,7 +395,40 @@ void SwitchAudioSystem::OutputThreadMain() {
   }
   const u64 interval = armNsToTicks(kPumpIntervalNs);
   u64 deadline = armGetSystemTick() + interval;
+  // HOME and sleep suspend the whole process, this thread in the middle of a wait. Coming back,
+  // the device's buffer rotation is no longer in step with ours and the sound crackles until the
+  // game restarts (issue #3). A loop that took far longer than any wait can is that return: the
+  // output is stopped, its buffers flushed and the three buffers queued again from silence.
+  const u64 resume_gap = armNsToTicks(kWaitTimeoutNs * 3);
+  u64 last_loop = armGetSystemTick();
   while (output.running.load(std::memory_order_relaxed)) {
+    const u64 loop_now = armGetSystemTick();
+    if (loop_now - last_loop > resume_gap) {
+      const double gap_ms = double(armTicksToNs(loop_now - last_loop)) / 1e6;
+      audoutStopAudioOut();
+      bool flushed = false;
+      audoutFlushAudioOutBuffers(&flushed);
+      AudioOutBuffer* stale = nullptr;
+      u32 stale_count = 0;
+      uint32_t drained = 0;
+      while (R_SUCCEEDED(audoutGetReleasedAudioOutBuffer(&stale, &stale_count)) && stale &&
+             stale_count && drained < 16) {
+        stale = nullptr;
+        stale_count = 0;
+        ++drained;
+      }
+      Result start_rc = audoutStartAudioOut();
+      for (size_t i = 0; i < kBufferCount; ++i) {
+        FillAndAppend(i);
+      }
+      REXLOG_INFO("SwitchAudioSystem: back after {:.0f} ms (HOME or sleep): audio output restarted "
+                  "(flushed {}, {} released, start 0x{:08X})",
+                  gap_ms, flushed ? 1 : 0, drained, start_rc);
+      deadline = armGetSystemTick() + interval;
+      last_loop = armGetSystemTick();
+      continue;
+    }
+    last_loop = loop_now;
     u64 timeout_ns = kWaitTimeoutNs;
     if (output.pump) {
       const u64 now = armGetSystemTick();
