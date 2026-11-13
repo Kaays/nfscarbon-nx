@@ -119,6 +119,7 @@ std::atomic<int64_t> g_last_end_ms{0};
 std::atomic<int64_t> g_last_submit_ms{0};
 std::atomic<uint32_t> g_server_obj{0};
 std::atomic<uint8_t*> g_server_base{nullptr};
+std::atomic<uint64_t> g_suspends{0};
 
 std::mutex g_submit_mutex;
 std::condition_variable g_submit_cv;
@@ -291,6 +292,7 @@ extern "C" REX_FUNC(sub_82A4DB58) {
   const uint32_t event = ctx.r3.u32;
   const uint32_t alertable = ctx.r5.u32;
   Rescue& r = g_rescue;
+  int64_t last_pass_ms = NowMs();
   for (;;) {
     if (r.first_wait_ms < 0) {
       r.first_wait_ms = NowMs();
@@ -301,6 +303,25 @@ extern "C" REX_FUNC(sub_82A4DB58) {
     __imp__sub_82A4DB58(ctx, base);
     const bool signaled = ctx.r3.u32 != kStatusTimeout;
     const int64_t now = NowMs();
+
+    // HOME and sleep suspend the process inside this wait; the time it was away is not the voice
+    // standing still. Without this the rescue fired on every return (ms_without_end = the time
+    // away) and freed packets the voice was still playing: the game then mixed over them and the
+    // sound crackled until the next suspend happened to line them up again (issue #3).
+    if (now - last_pass_ms > 4 * kWaitMs) {
+      g_last_end_ms.store(now, std::memory_order_relaxed);
+      g_last_submit_ms.store(now, std::memory_order_relaxed);
+      r.first_wait_ms = now;
+      if (r.active) {
+        r.active = false;
+        r.since_ms = now;
+      }
+      ++g_suspends;
+      REXLOG_INFO("[audio] back after {} ms away (HOME or sleep): the server's progress timer starts "
+                  "again ({} times)",
+                  now - last_pass_ms, g_suspends.load());
+    }
+    last_pass_ms = now;
 
     if (r.active && g_ends.load(std::memory_order_relaxed) != r.ends_on_entry) {
       REXLOG_INFO("[audio] the voice returns end-of-packet again after {} ms of rescue (freed {}, resubmitted {})",
