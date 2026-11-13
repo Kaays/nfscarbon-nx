@@ -50,8 +50,6 @@ class Clock {
   static uint64_t QueryHostSystemTime();
   // Queries the milliseconds since the host began.
   static uint64_t QueryHostUptimeMillis();
-  // Host time (ms) left out of the guest's clock while the process was suspended.
-  static uint64_t SuspendedHostMillis();
 
   // Guest time scalar.
   static double guest_time_scalar();

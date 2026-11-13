@@ -6,7 +6,6 @@
  *              See LICENSE file in the project root for full license text.
  */
 
-#include <rex/chrono/clock.h>
 #include <rex/audio/switch/switch_audio_system.h>
 
 #include <algorithm>
@@ -423,8 +422,8 @@ void SwitchAudioSystem::OutputThreadMain() {
         FillAndAppend(i);
       }
       REXLOG_INFO("SwitchAudioSystem: back after {:.0f} ms (HOME or sleep): audio output restarted "
-                  "(flushed {}, {} released, start 0x{:08X}); guest clock has skipped {} ms so far",
-                  gap_ms, flushed ? 1 : 0, drained, start_rc, rex::chrono::Clock::SuspendedHostMillis());
+                  "(flushed {}, {} released, start 0x{:08X})",
+                  gap_ms, flushed ? 1 : 0, drained, start_rc);
       deadline = armGetSystemTick() + interval;
       last_loop = armGetSystemTick();
       continue;
