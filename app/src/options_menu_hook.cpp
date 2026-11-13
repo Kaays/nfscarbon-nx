@@ -109,6 +109,12 @@ Row g_rows[] = {
     {"mirror", "Rear-View Mirror",
      {{"Full Rate", "carbon_gpu_mirror_half_rate=false"}, {"Half Rate", "carbon_gpu_mirror_half_rate=true"}},
      2, 0, 0},
+    // TEMPORARY (remove before the release): turns the frame trace and the frame pictures on in
+    // the game, right before the scene to look at (Neville's garage cutscene).
+    {"debug_capture", "Debug Capture",
+     {{"Off", "carbon_gpu_trace_interval=0;carbon_gpu_dump_frame_interval=0"},
+      {"On", "carbon_gpu_trace_interval=150;carbon_gpu_dump_frame_interval=150"}},
+     2, 0, 0},
 };
 constexpr uint32_t kRowCount = sizeof(g_rows) / sizeof(g_rows[0]);
 
