@@ -18,7 +18,7 @@ native Vulkan renderer running on NVK (Mesa).
 > with (CPU 1683 / GPU 844 / RAM 2133 MHz) and the fourth CPU core enabled, it holds 28-30 FPS in races and only
 > dips to about 18-22 FPS at the start of Race Wars, while the whole pack is on screen, with clean sound. Long career
 > sessions (2.5 h and more in our tests) run without freezes. Video settings (motion blur, anti-aliasing, resolution
-> and more) are in the game's own **Options > Video** screen. Editions: **USA**, **Europe**, **Europe (Nordic)**, **France**, **Italy**, **Germany** and **Spain** (see [Edition](#edition)). Latest version: see [Releases](../../releases).
+> and more) are in the game's own **Options > Video** screen. Editions: **USA**, **Europe**, **Europe (Nordic)**, **France**, **Italy**, **Germany**, **Spain** and both **Collector's Editions** (see [Edition](#edition)). Latest version: see [Releases](../../releases).
 
 ## Where it stands
 
@@ -68,13 +68,13 @@ shortcuts that show.
 ## What you need
 
 - A Switch that can run homebrew (custom firmware, Atmosphère).
-- **Your own copy** of the Xbox 360 game, one of the seven editions in [Edition](#edition): a disc image (`.iso`) or
+- **Your own copy** of the Xbox 360 game, one of the nine editions in [Edition](#edition): a disc image (`.iso`) or
   the extracted disc with its `default.xex`. No game files (graphics, sound, video, data) are included here or in the releases.
 
 ## Install (prebuilt NRO)
 
 1. Download the archive for your edition from the [Releases](../../releases) page (USA, Europe, Europe
-   (Nordic), France, Italy, Germany or Spain). Each one holds `nfscarbon.nro` and `nfscarbon.toml`. Each NRO only runs its own disc (see
+   (Nordic), France, Italy, Germany, Spain or a Collector's Edition). Each one holds `nfscarbon.nro` and `nfscarbon.toml`. Each NRO only runs its own disc (see
    [Edition](#edition) to tell yours).
 2. Put them on the SD card with the files of your disc:
 
@@ -95,6 +95,8 @@ the NRO. To keep several editions, use one folder each (for example `nfscarbon-n
 each with its NRO, toml and `game_root/`) and one forwarder each.
 
 ## Build from source
+
+For working on the port (adding a disc, debugging, what is still open), see [docs/MAINTAINING.md](docs/MAINTAINING.md).
 
 Linux or WSL (Windows). Tested on WSL with Ubuntu. You need:
 
@@ -123,7 +125,7 @@ Notes:
 - **Step 6** with `4` parallel jobs. More jobs need more RAM. The unstripped executable `app/out/switch-usa/nfscarbon`
   is kept for `tools/symbolize_profile.py`.
 - **Editions**: the folders are per edition (`assets/game_root_<region>`, `pgo_<region>/`, `app/out/switch-<region>`).
-  `REGION` picks the edition for steps 5 and 6 (`usa` by default, `pal2` for Europe, `pal` for Europe (Nordic), `fr`, `it`, `de`, `es`). For
+  `REGION` picks the edition for steps 5 and 6 (`usa` by default, `pal2` for Europe, `pal` for Europe (Nordic), `fr`, `it`, `de`, `es`, `collector_usa`, `collector_pal`). For
   another edition, run step 5 for `usa` once
   first: the code generator saves each edition's image (`assets/guest_image_<region>.bin`), and `tools/codegen.sh`
   then finds the USA hook addresses in that edition's code (`tools/map_edition.py`) and writes the hooks translated
@@ -234,7 +236,7 @@ Review changes before relying on them: corrections and pull requests are very we
 
 ## Edition
 
-Seven editions, each with its own NRO. All are discs without title update. To tell yours, compare the SHA-1 of the
+Nine editions, each with its own NRO. All are discs without title update. To tell yours, compare the SHA-1 of the
 disc's `default.xex` (`sha1sum default.xex`) with the table. All have Title ID `454107EC`.
 
 | Edition | Disc | Build | Media ID | `default.xex` | SHA-1 |
@@ -246,6 +248,8 @@ disc's `default.xex` (`sha1sum default.xex`) with the table. All have Title ID `
 | Italy | `Need for Speed - Carbon (Italy)` | `REGION=it` | `7D255249` | 0.0.0.10 | `1f0cc79777b0cb6f332ea61f363ea93e86349dd3` |
 | Germany | `Need for Speed - Carbon (Germany)` | `REGION=de` | `4F470143` | 0.0.0.6 | `e68337df51b659eb86ad565b3a4c430fa6c7e0f0` |
 | Spain | `Need for Speed - Carbon (Spain)` | `REGION=es` | `1E40F7A2` | 0.0.0.9 | `ac5be143c59452c8d52e3da8150a6a14da254db8` |
+| Collector's Edition (USA) | `Need for Speed - Carbon - Collector's Edition (USA) (En,Es)` | `REGION=collector_usa` | `1F8BEB88` | 0.0.0.7 | `0f685c38fc972972be36f3ce63e85e2e77f84a59` |
+| Collector's Edition (Europe) | `Need for Speed - Carbon - Collector's Edition (Europe)` | `REGION=collector_pal` | `5E74E60D` | 0.0.0.11 | `2020cfe3f0df44ded6cdd7c164542ab18d886ee2` |
 
 **Europe (Nordic)** was the first edition added after USA, and the one the multi-edition support was built and
 tested with: its code is the same build of the game with small changes (functions moved by up to 4 KB), so the
@@ -265,8 +269,11 @@ boundary there and the code generator missed it.
 All run at about the same speed as USA with the fourth core and a profile-guided build. The game's own menus and
 subtitles are in the disc's language.
 
-**Next**: the Collector's Editions. A disc whose `default.xex` has the same SHA-1 as one in the table above already
-works with that NRO.
+**The Collector's Editions** (USA and Europe) are the same build with the extra cars, races and vinyls added, which
+moves the code after about 0x821DF800. They were made the same way, from their region's normal disc first; the
+Europe one needed the same hand-set function bounds as Europe, moved by 0x1D0 (`docs/collectors_editions.md`).
+
+A disc whose `default.xex` has the same SHA-1 as one in the table above works with that NRO.
 
 ## Credits
 
