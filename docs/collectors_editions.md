@@ -1,4 +1,4 @@
-# Collector's Editions (in progress)
+# Collector's Editions
 
 Notes on the Collector's Edition discs, before they get their own builds.
 
@@ -16,3 +16,17 @@ Each Collector's Edition matches its region's normal disc up to about 0x821DF800
 USA, CE Europe against Europe, France and Germany) and differs after that: the same build with the
 Collector's Edition content added, which moves the rest of the code. So CE USA is best made from USA
 first, and CE Europe from Europe (pal2) and the other European discs.
+
+## Builds
+
+| Disc | Build | Folder in `assets/` |
+|---|---|---|
+| Collector's Edition (USA) | `REGION=collector_usa` | `game_root_collector_usa` |
+| Collector's Edition (Europe) | `REGION=collector_pal` | `game_root_collector_pal` |
+
+- **collector_usa**: 655 functions from USA and the other discs, the hand-bounded function with its two
+  switch tables carried over, 214 thunks, 14 repeated-code functions (the group at 0x82189448).
+- **collector_pal**: 684 functions from Europe and the other discs, 184 thunks, 15 repeated-code
+  functions (the group at 0x82189528). The hand-bounded function (pal2 0x827CFDA8) sits 0x1D0
+  lower here and still crosses 0x827D0000: its bounds and both switch tables were moved by hand
+  after checking every instruction they point at.

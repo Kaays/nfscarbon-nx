@@ -1,0 +1,23 @@
+# nfscarbon-nx: code generator options for the ceusa edition (see overrides.toml for what they do).
+# setjmp found by tools/make_edition_manifest.py (usa 0x8279D060).
+
+cr_as_local = true
+non_volatile_as_local = false
+xer_as_local = true
+ctr_as_local = true
+
+[functions]
+# Bounds set by hand (pal2 0x827CFDA8): a switch table the scanner misses.
+"0x827D0C88" = { end = 0x827D11E0 }
+# setjmp: share_registers so the jmp_buf gets the caller's cr.
+"0x8279CE90" = { share_registers = true }
+
+[[switch_tables]]
+address = 0x827D0EDC
+register = 11
+labels = [0x827D0EF0, 0x827D0EFC, 0x827D0F08, 0x827D0EF0]
+
+[[switch_tables]]
+address = 0x827D1098
+register = 11
+labels = [0x827D10AC, 0x827D10C4, 0x827D10EC, 0x827D10AC]

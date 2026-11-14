@@ -1,0 +1,26 @@
+# nfscarbon-nx: code generator options for the collector_pal edition (see overrides.toml for what they do).
+# setjmp found by tools/make_edition_manifest.py (pal2 0x8279BFB0).
+
+cr_as_local = true
+non_volatile_as_local = false
+xer_as_local = true
+ctr_as_local = true
+
+[functions]
+# setjmp: share_registers so the jmp_buf gets the caller's cr.
+"0x8279BDE0" = { share_registers = true }
+
+# Bounds set by hand (pal2 0x827CFDA8, here 0x1D0 lower): a function with two switch jump tables
+# that crosses 0x827D0000; on pal2 the scanner cut it there and the first video crashed. Same
+# instructions here, so the same bounds and tables, moved.
+"0x827CFBD8" = { end = 0x827D0130 }
+
+[[switch_tables]]
+address = 0x827CFE2C
+register = 11
+labels = [0x827CFE40, 0x827CFE4C, 0x827CFE58, 0x827CFE40]
+
+[[switch_tables]]
+address = 0x827CFFE8
+register = 11
+labels = [0x827CFFFC, 0x827D0014, 0x827D003C, 0x827CFFFC]
