@@ -108,6 +108,11 @@ worth knowing: user clip planes (now supported, but the game does not use them t
 - **Rare one-frame white flash** (a stray giant polygon) and a few black frames at some race starts. The same flash
   exists in nfsmw-nx.
 - **Lips behind the voice** in in-engine cutscenes when the frame rate drops below 30 (seen once, not confirmed).
+- **Switch video clips drop 2-5 FPS on battery** ([#4](https://github.com/Kaays/nfscarbon-nx/issues/4)): the game
+  looks fine but the saved clip stutters; on the charger the clip is smooth (CPU 1683 / GPU 921 / RAM 1600). Likely
+  lead: the fourth CPU core the port uses is the one the system keeps for itself, capture and encoding included, and
+  on battery there is less margin (RAM 1600). Things to try: higher RAM clock on battery; keeping the busiest game
+  threads off core 3; lowering their priority there while a clip is being recorded.
 - EA Trax in pursuits (a user request): the game picks its own pursuit score; would need a patch to its music logic.
 
 ## Rules this project keeps
