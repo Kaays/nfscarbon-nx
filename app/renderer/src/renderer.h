@@ -269,6 +269,16 @@ class Renderer {
     uint64_t gens[6] = {};
   };
   std::unordered_map<uint64_t, CubeFromFaces> cubes_from_faces_;
+  // The six FindResolvedRegion lookups of a cube, kept until the next resolve (resolve_epoch_):
+  // the reflection cube is sampled by most car draws, and memory cubes always found nothing.
+  struct CubeLookup {
+    uint64_t epoch = ~0ull;
+    Texture* faces[6] = {};
+    uint32_t rows[6] = {};
+    uint32_t found = 0;
+  };
+  std::unordered_map<uint64_t, CubeLookup> cube_lookups_;
+  uint64_t resolve_epoch_ = 0;  // bumped by every resolve and resolved texture made or freed
   std::unordered_set<uint64_t> cube_logged_;
   void UploadTexture(Texture& t);
   VkImageView GetTextureView(Texture& t, uint32_t swizzle, bool use_signed,
@@ -352,6 +362,8 @@ class Renderer {
   struct ArenaPage {
     uint64_t hash = 0;  // 0 = page not copied yet
     uint64_t checked = 0;
+    uint64_t sparse = 0;        // hash of one 64-byte line in eight (carbon_gpu_vertex_sparse_check)
+    uint64_t full_checked = 0;  // last frame the whole page was hashed
     uint8_t interval = 1;
   };
   struct ArenaEntry {
@@ -477,13 +489,25 @@ class Renderer {
     VkIndexType index_type = VK_INDEX_TYPE_UINT16;
   } cmd_;
   // Texture descriptor sets already built this frame, by binding contents.
-  std::unordered_map<uint64_t, VkDescriptorSet> texture_set_cache_;
+  // Flat, allocation-free per-frame tables (the unordered_maps cost a malloc per insert and a free
+  // per entry each frame: 3 % of the renderer thread's samples in Race Wars starts). A slot whose
+  // stamp is not the current one is empty, so starting over is one increment.
+  static constexpr uint32_t kSetCacheSize = 8192;  // power of two
+  static constexpr uint32_t kCacheProbes = 16;
+  struct SetCacheSlot {
+    uint64_t key = 0;
+    uint64_t stamp = 0;
+    VkDescriptorSet set = VK_NULL_HANDLE;
+  };
+  std::vector<SetCacheSlot> set_cache_;
+  uint64_t set_cache_stamp_ = 1;
   // Whole BindTextures results this frame, by shader and the raw fetch constants it reads: a
   // draw that repeats them (the second scene tile, the reflection faces, objects sharing a
   // material) skips the texture, sampler and view lookups. Valid while the textures it used have
   // not been resolved into again (resolve_gen) and no resolved texture appeared (epoch).
   static constexpr uint32_t kBindCacheMax = 8;
   struct TextureBindEntry {
+    uint64_t key = 0;
     const Shader* shader = nullptr;
     uint64_t epoch = 0;
     VkDescriptorSet set = VK_NULL_HANDLE;
@@ -499,8 +523,9 @@ class Renderer {
       uint32_t resolved_base;  // a resolved texture found by address: still the one found
     } slots[kBindCacheMax];
   };
-  std::unordered_map<uint64_t, TextureBindEntry> texture_bind_cache_;
-  uint64_t texture_bind_epoch_ = 0;
+  static constexpr uint32_t kBindCacheSize = 4096;  // power of two
+  std::vector<TextureBindEntry> texture_bind_cache_;  // empty unless epoch == texture_bind_epoch_
+  uint64_t texture_bind_epoch_ = 1;
   std::vector<uint32_t> scratch_indices_;
   // Fused index conversion for plain indexed draws: converts into the upload
   // buffer and returns the range of vertex indices used.
@@ -639,6 +664,9 @@ class Renderer {
     // Float constant uploads: by packed shaders, by relatively addressed ones (whole 4 KiB), and
     // the bytes the packed ones saved against uploading registers 0..highest read.
     uint32_t tex_binds_reused = 0, tex_binds_built = 0;
+    // Bytes hashed to find changed guest data: vertex pages (static, sparse samples, dynamic),
+    // vertex buffers uploaded per draw, textures.
+    uint64_t hash_bytes[5] = {};
     uint32_t const_uploads_packed = 0, const_uploads_full = 0;
     uint64_t const_bytes_saved = 0;
     double gpu_total_s = 0, gpu_tag_s[5] = {};

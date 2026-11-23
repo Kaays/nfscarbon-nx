@@ -330,6 +330,7 @@ Texture* Renderer::GetOrCreateResolveTexture(uint32_t base_address, uint32_t wid
   resolved_textures_.push_back(raw);
   // A resolved texture takes priority over memory ones at its address (GetTexture).
   ++texture_bind_epoch_;
+  ++resolve_epoch_;
   return raw;
 }
 
@@ -363,9 +364,20 @@ Texture* Renderer::GetCubeFromResolvedFaces(const GuestTexture& guest) {
   Texture* faces[6];
   uint32_t rows[6] = {};
   uint32_t found = 0;
-  for (uint32_t i = 0; i < 6; ++i) {
-    faces[i] = FindResolvedRegion(base + i * stride, guest.width, guest.height, rows[i]);
-    found += faces[i] ? 1 : 0;
+  CubeLookup& lookup = cube_lookups_[key];
+  if (lookup.epoch == resolve_epoch_) {
+    std::copy(lookup.faces, lookup.faces + 6, faces);
+    std::copy(lookup.rows, lookup.rows + 6, rows);
+    found = lookup.found;
+  } else {
+    for (uint32_t i = 0; i < 6; ++i) {
+      faces[i] = FindResolvedRegion(base + i * stride, guest.width, guest.height, rows[i]);
+      found += faces[i] ? 1 : 0;
+    }
+    lookup.epoch = resolve_epoch_;
+    std::copy(faces, faces + 6, lookup.faces);
+    std::copy(rows, rows + 6, lookup.rows);
+    lookup.found = found;
   }
   if (found == 0) {
     // An ordinary cube map loaded from the disc (logged once each, a few, for diagnosis).
@@ -518,6 +530,7 @@ Texture* Renderer::GetTexture(const GuestTexture& guest, bool allow_upload) {
     }
     created->extent = GetGuestTextureExtent(guest);
     created->content_hash = HashExtent(physical_base_, created->extent);
+    stats_.hash_bytes[4] += created->extent.base_size + created->extent.mip_size;
     created->last_hash_frame = frame_number_;
     UploadTexture(*created);
     t = created.get();
@@ -527,6 +540,7 @@ Texture* Renderer::GetTexture(const GuestTexture& guest, bool allow_upload) {
     // Re-check the guest memory: textures that stay the same are checked
     // less and less often.
     uint64_t hash = HashExtent(physical_base_, t->extent);
+    stats_.hash_bytes[4] += t->extent.base_size + t->extent.mip_size;
     t->last_hash_frame = frame_number_;
     if (hash != t->content_hash) {
       t->content_hash = hash;
@@ -668,9 +682,18 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
     }
     bind_key = HashBytes(raw, binding_count * 6 * sizeof(uint32_t),
                          uint64_t(reinterpret_cast<uintptr_t>(shader)));
-    auto hit = texture_bind_cache_.find(bind_key);
-    if (hit != texture_bind_cache_.end()) {
-      const TextureBindEntry& e = hit->second;
+    if (texture_bind_cache_.empty()) texture_bind_cache_.resize(kBindCacheSize);
+    const TextureBindEntry* found = nullptr;
+    for (uint32_t probe = 0; probe < kCacheProbes; ++probe) {
+      const TextureBindEntry& e = texture_bind_cache_[(bind_key + probe) & (kBindCacheSize - 1)];
+      if (e.epoch != texture_bind_epoch_) break;  // empty: not in the table
+      if (e.key == bind_key) {
+        found = &e;
+        break;
+      }
+    }
+    if (found) {
+      const TextureBindEntry& e = *found;
       bool valid = e.shader == shader && e.epoch == texture_bind_epoch_ &&
                    e.count == binding_count &&
                    std::memcmp(e.raw, raw, binding_count * 6 * sizeof(uint32_t)) == 0;
@@ -835,7 +858,17 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
                                  descriptor_count);
   auto remember = [&](VkDescriptorSet set) {
     if (!cacheable || !set || slot_count != binding_count) return;
-    TextureBindEntry& e = texture_bind_cache_[bind_key];
+    // The key's slot, the first empty one after it, or (table crowded) the first probed.
+    TextureBindEntry* slot = &texture_bind_cache_[bind_key & (kBindCacheSize - 1)];
+    for (uint32_t probe = 0; probe < kCacheProbes; ++probe) {
+      TextureBindEntry& c2 = texture_bind_cache_[(bind_key + probe) & (kBindCacheSize - 1)];
+      if (c2.epoch != texture_bind_epoch_ || c2.key == bind_key) {
+        slot = &c2;
+        break;
+      }
+    }
+    TextureBindEntry& e = *slot;
+    e.key = bind_key;
     e.shader = shader;
     e.epoch = texture_bind_epoch_;
     e.set = set;
@@ -843,11 +876,19 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
     std::memcpy(e.raw, raw, binding_count * 6 * sizeof(uint32_t));
     std::copy(slots, slots + slot_count, e.slots);
   };
-  auto cached = texture_set_cache_.find(cache_key);
-  if (cached != texture_set_cache_.end()) {
-    set_out = cached->second;
-    remember(set_out);
-    return;
+  if (set_cache_.empty()) set_cache_.resize(kSetCacheSize);
+  SetCacheSlot* set_slot = &set_cache_[cache_key & (kSetCacheSize - 1)];
+  for (uint32_t probe = 0; probe < kCacheProbes; ++probe) {
+    SetCacheSlot& c2 = set_cache_[(cache_key + probe) & (kSetCacheSize - 1)];
+    if (c2.stamp != set_cache_stamp_) {
+      set_slot = &c2;  // empty: insert here
+      break;
+    }
+    if (c2.key == cache_key) {
+      set_out = c2.set;
+      remember(set_out);
+      return;
+    }
   }
   VkDescriptorSet set = AllocateDescriptorSet(GetTextureSetLayout(ts.texture_descriptor_count));
   if (!set) {
@@ -864,15 +905,19 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
   }
   vulkan_device_->functions().vkUpdateDescriptorSets(vk_device_, descriptor_count, writes, 0,
                                                      nullptr);
-  texture_set_cache_.emplace(cache_key, set);
+  set_slot->key = cache_key;
+  set_slot->stamp = set_cache_stamp_;
+  set_slot->set = set;
   set_out = set;
   remember(set);
 }
 
 void Renderer::EvictResources() {
   const auto& dfn = vulkan_device_->functions();
-  texture_bind_cache_.clear();
   ++texture_bind_epoch_;
+  ++set_cache_stamp_;
+  cube_lookups_.clear();
+  ++resolve_epoch_;
   constexpr uint64_t kMinAge = 8;         // frames; longer than the frames in flight
   constexpr uint64_t kStaleAge = 1800;    // frames; always freed
 

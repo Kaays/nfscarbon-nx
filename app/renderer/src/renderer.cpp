@@ -67,6 +67,9 @@ REXCVAR_DEFINE_INT32(carbon_gpu_vertex_arena_mb, 256, "CarbonGPU",
 REXCVAR_DEFINE_INT32(carbon_gpu_vertex_arena_check_interval, 1, "CarbonGPU",
                      "Frames an unchanged cached vertex page may go between checks (1 = every frame)")
     .range(1, 8);
+REXCVAR_DEFINE_BOOL(carbon_gpu_vertex_sparse_check, true, "CarbonGPU",
+                    "Check unchanged cached vertex pages by one 64-byte line in eight each frame and "
+                    "in full every 8 frames (false = in full every frame)");
 REXCVAR_DEFINE_BOOL(carbon_gpu_skip_redundant_resolves, false, "CarbonGPU",
                     "Skip resolves whose source contents, rectangle and parameters match the "
                     "previous resolve into the same destination region (false = always copy)");
@@ -761,8 +764,7 @@ bool Renderer::BeginFrame() {
   }
   f.chunks.clear();
   dfn.vkResetDescriptorPool(vk_device_, f.descriptor_pool, 0);
-  texture_set_cache_.clear();
-  texture_bind_cache_.clear();
+  ++set_cache_stamp_;
   ++texture_bind_epoch_;
   cmd_ = CmdCache();
   if (warmup_pending_.exchange(false)) {
@@ -1725,6 +1727,24 @@ constexpr uint32_t kArenaPageBytes = 16 * 1024;
 // Default 1: with 4 the car shadow (rewritten by the game each frame) slid behind the car at low fps,
 // and checking every frame cost no measurable fps.
 uint8_t g_arena_max_interval = 1;
+// Sparse check (carbon_gpu_vertex_sparse_check): XXH3 over a whole 16 KiB page every frame was the
+// largest single cost of the renderer thread in Race Wars starts (10-12 % of its samples, with the
+// texture checks). A rewrite of a vertex buffer changes its positions everywhere, so one 64-byte
+// line in eight finds it the same frame; a partial one is found by the full check within 8 frames.
+constexpr uint64_t kArenaFullCheckFrames = 8;
+uint64_t SparseHash(const uint8_t* p, uint32_t n) {
+  uint64_t h = 0x9E3779B97F4A7C15ull ^ n;
+  for (uint32_t at = 0; at + 64 <= n; at += 512) {
+    uint64_t w[8];
+    std::memcpy(w, p + at, 64);
+    for (uint64_t v : w) {
+      h ^= v;
+      h *= 0xFF51AFD7ED558CCDull;
+      h ^= h >> 32;
+    }
+  }
+  return h | 1;
+}
 }  // namespace
 
 bool Renderer::CreateVertexArena() {
@@ -1835,6 +1855,7 @@ bool Renderer::ArenaFetch(uint64_t key, uint32_t address, uint32_t size, uint32_
     return false;
   }
   const uint8_t* src = physical_base_ + (address & 0x1FFFFFFF);
+  const bool sparse_check = REXCVAR_GET(carbon_gpu_vertex_sparse_check);
   for (int attempt = 0; attempt < 2; ++attempt) {
     uint32_t index = ArenaLookup(key);
     if (index == UINT32_MAX) {
@@ -1873,16 +1894,31 @@ bool Renderer::ArenaFetch(uint64_t key, uint32_t address, uint32_t size, uint32_
         }
         uint32_t page_start = p * kArenaPageBytes;
         uint32_t n = std::min(kArenaPageBytes, size - page_start);
-        uint64_t h = HashBytes(src + page_start, n, 0) | 1;
+        const uint8_t* page_src = src + page_start;
+        if (page.hash && !e.dynamic && sparse_check &&
+            frame_number_ - page.full_checked < kArenaFullCheckFrames) {
+          stats_.hash_bytes[1] += n / 8;
+          if (SparseHash(page_src, n) != page.sparse) {
+            changed = true;
+            break;
+          }
+          page.checked = frame_number_;
+          continue;
+        }
+        stats_.hash_bytes[e.dynamic ? 2 : 0] += n;
+        uint64_t h = HashBytes(page_src, n, 0) | 1;
         if (!page.hash) {
-          std::memcpy(arena_mapped_ + e.offset + page_start, src + page_start, n);
+          std::memcpy(arena_mapped_ + e.offset + page_start, page_src, n);
           vmaFlushAllocation(allocator_, arena_allocation_, e.offset + page_start, n);
           page.hash = h;
+          page.sparse = SparseHash(page_src, n);
+          page.full_checked = frame_number_;
           stats_.arena_bytes += n;
         } else if (h != page.hash) {
           changed = true;
           break;
         } else {
+          page.full_checked = frame_number_;
           page.interval = std::min<uint8_t>(page.interval * 2, g_arena_max_interval);
         }
         page.checked = frame_number_;
@@ -1953,6 +1989,7 @@ bool Renderer::SetupVertexData(const RegisterFile& regs, Shader* vs, DrawConstan
     const uint8_t* vsrc = physical_base_ + (address & 0x1FFFFFFF);
     // Small buffers only: big ones keep the plain per-frame reuse (hashing them per draw costs too much).
     const uint64_t vhash = (size && size <= 64 * 1024) ? HashBytes(vsrc, size, 0) : 0;
+    if (size && size <= 64 * 1024) stats_.hash_bytes[3] += size;
     if (it != vertex_upload_cache_.end() && it->second.hash == vhash) {
       dword_offset = it->second.dword_offset;
     } else {
@@ -3412,6 +3449,13 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
           double(stats_.const_bytes_saved) / frames / (1024.0 * 1024.0));
       REXGPU_INFO("[carbon-gpu] texture binds per frame: {:.0f} reused, {:.0f} built",
                   stats_.tex_binds_reused / frames, stats_.tex_binds_built / frames);
+      {
+        const double mib = 1.0 / frames / (1024.0 * 1024.0);
+        REXGPU_INFO("[carbon-gpu] hashed MiB per frame: vertex pages {:.2f} full + {:.2f} sparse, "
+                    "changing vertex pages {:.2f}, uploaded vertex buffers {:.2f}, textures {:.2f}",
+                    stats_.hash_bytes[0] * mib, stats_.hash_bytes[1] * mib, stats_.hash_bytes[2] * mib,
+                    stats_.hash_bytes[3] * mib, stats_.hash_bytes[4] * mib);
+      }
       if (REXCVAR_GET(carbon_gpu_draw_profile)) {
         const double ms = 1000.0 / frames;
         const double mib = 1.0 / frames / (1024.0 * 1024.0);
