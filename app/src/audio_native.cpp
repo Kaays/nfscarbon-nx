@@ -29,6 +29,8 @@
 //                 reads; otherwise the recompiled function runs.
 //   sub_826CD528  scale: dst[i] = src[i] * gain. Aligned blocks of 64 use VMX (flush to zero), anything
 //                 else the scalar fmuls loop.
+//   sub_822B6A50  4-bit ADPCM block decoder (19 bytes -> 32 samples): two-tap predictor, each step a
+//                 double fma rounded to single in the game's order, then float -> int16 with saturation.
 //   sub_826B56A8  sample unpack, mode 1 (big-endian int16 to float * 2^-15), from zofo007's
 //                 NFS-Carbon-NX (src/audio_unpack_fast.h, GPL-3.0); other modes run the recompiled code.
 //
@@ -504,6 +506,64 @@ bool ScaleCall(Ctx& ctx, uint8_t* base) {
   return true;
 }
 
+// ---- sub_822B6A50: ADPCM block decoder -----------------------------------------------------------
+// r3 = decoder (+36 data, +44 block index written, +48 32 floats: 2 history + 30 decoded, +176 the same
+// as 32 int16), r4 = block index. A block is 19 bytes: two 12-bit history samples (with the predictor
+// and shift numbers in their low nibbles), then 30 nibbles. Each sample is d + p2 * k1 + p1 * k0 as two
+// fmadds; which product goes first changes with the position in each group of 10 (as the game does).
+constexpr uint32_t kAdpcmTable = 0x82B78BE8u;  // deltas [shift * 16 + nibble]; predictors at -36 and -20
+inline bool AdpcmBlock(uint8_t* base, uint32_t state, uint32_t index) {
+  using namespace biquad;
+  const uint32_t p = Load32(base, state + 36) + 19 * index;
+  if (uint64_t(p) < uint64_t(state) + 240 && uint64_t(state) + 44 < uint64_t(p) + 19) return false;
+  Store32(base, state + 44, index);
+  const uint8_t* b = base + p;
+  const auto history = [](uint8_t lo, uint8_t hi) {
+    return float(int32_t(int8_t(hi)) * 256 + int32_t(lo & 0xF0));
+  };
+  float y2 = history(b[0], b[1]), y1 = history(b[2], b[3]);
+  StoreF(base, state + 48, y2);
+  StoreF(base, state + 52, y1);
+  const uint32_t predictor = (b[0] & 0xFu) * 4;
+  const double k0 = LoadF(base, kAdpcmTable - 36 + predictor);
+  const double k1 = LoadF(base, kAdpcmTable - 20 + predictor);
+  const uint32_t deltas = kAdpcmTable + (b[2] & 0xFu) * 64;
+  // Positions (in each group of 10) where p1 * k0 is added first.
+  constexpr uint32_t kP1First = (1u << 2) | (1u << 4) | (1u << 7) | (1u << 9);
+  for (uint32_t s = 0; s < 30; ++s) {
+    const uint8_t byte = b[4 + s / 2];
+    const double d = LoadF(base, deltas + 4 * ((s & 1) ? (byte & 0xFu) : uint32_t(byte >> 4)));
+    float v;
+    if (kP1First & (1u << (s % 10))) {
+      v = Madds(y1, k0, d);
+      v = Madds(y2, k1, v);
+    } else {
+      v = Madds(y2, k1, d);
+      v = Madds(y1, k0, v);
+    }
+    StoreF(base, state + 56 + 4 * s, v);
+    y2 = y1;
+    y1 = v;
+  }
+  // vctsxs (truncate, saturate to int32, NaN -> 0) then vpkswss (saturate to int16).
+  for (uint32_t i = 0; i < 32; ++i) {
+    const float f = LoadF(base, state + 48 + 4 * i);
+    int32_t v = 0;
+    if (f == f) v = f >= 32767.0f ? 32767 : f <= -32768.0f ? -32768 : int32_t(f);
+    const uint16_t be = __builtin_bswap16(uint16_t(int16_t(v)));
+    std::memcpy(base + state + 176 + 2 * i, &be, 2);
+  }
+  return true;
+}
+
+template <typename Ctx>
+bool AdpcmCall(Ctx& ctx, uint8_t* base) {
+  ctx.fpscr.disableFlushMode();
+  if (!AdpcmBlock(base, ctx.r3.u32, ctx.r4.u32)) return false;
+  ctx.fpscr.enableFlushModeUnconditional();
+  return true;
+}
+
 }  // namespace nfscarbon::audio_native
 
 #ifndef NFSCARBON_AUDIO_NATIVE_TEST
@@ -675,6 +735,13 @@ extern "C" void __imp__sub_826CD528(PPCContext& __restrict ctx, uint8_t* base);
 extern "C" REX_FUNC(sub_826CD528) {
   if (!REXCVAR_GET(nfscarbon_audio_native) || !nfscarbon::audio_native::ScaleCall(ctx, base)) {
     __imp__sub_826CD528(ctx, base);
+  }
+}
+
+extern "C" void __imp__sub_822B6A50(PPCContext& __restrict ctx, uint8_t* base);
+extern "C" REX_FUNC(sub_822B6A50) {
+  if (!REXCVAR_GET(nfscarbon_audio_native) || !nfscarbon::audio_native::AdpcmCall(ctx, base)) {
+    __imp__sub_822B6A50(ctx, base);
   }
 }
 
