@@ -605,11 +605,19 @@ class Renderer {
   VkShaderModule null_ps_module_ = VK_NULL_HANDLE;
 
   // Per-frame upload dedupe: guest (address, size) -> dword offset in chunk.
-  struct VertexUploadCacheEntry {
+  // Vertex buffers that go through the upload chunk (not the arena), per chunk: flat table with linear
+  // probing, emptied by bumping the stamp. Keyed by buffer and the byte range copied.
+  struct VertexUploadSlot {
+    uint64_t key = 0;
+    uint64_t hash = 0;  // contents when copied: a rewrite later in the same chunk gets a new copy
+    uint32_t lo = 0, hi = 0;
+    uint32_t stamp = 0;
     uint32_t dword_offset = 0;
-    uint64_t hash = 0;  // contents when copied: a rewrite later in the same frame gets a new copy
   };
-  std::unordered_map<uint64_t, VertexUploadCacheEntry> vertex_upload_cache_;
+  static constexpr size_t kVertexUploadSlots = 4096;
+  static constexpr size_t kVertexUploadProbes = 8;
+  std::vector<VertexUploadSlot> vertex_upload_slots_;
+  uint32_t vertex_upload_stamp_ = 1;
   uint32_t vertex_upload_cache_chunk_ = UINT32_MAX;
 
   // Float constant upload reuse.

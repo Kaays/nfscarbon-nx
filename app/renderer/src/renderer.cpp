@@ -75,6 +75,9 @@ REXCVAR_DEFINE_BOOL(carbon_gpu_skip_redundant_resolves, false, "CarbonGPU",
                     "previous resolve into the same destination region (false = always copy)");
 REXCVAR_DEFINE_BOOL(carbon_gpu_vertex_ranges, true, "CarbonGPU",
                     "Copy only the part of a vertex buffer the draw's indices reach");
+REXCVAR_DEFINE_BOOL(carbon_gpu_vertex_upload_ranges, true, "CarbonGPU",
+                    "For vertex buffers that change too often for the arena: check and copy only the "
+                    "part the draw's indices reach (false = the whole buffer, as before)");
 // Phones and the Switch (about 3.2 GB for the whole title in takeover mode,
 // shared with the guest's 512 MB and the driver) get the small budget.
 #if defined(__ANDROID__) || defined(__SWITCH__)
@@ -797,7 +800,7 @@ bool Renderer::BeginFrame() {
   }
   current_chunk_ = UINT32_MAX;
   chunk_offset_ = 0;
-  vertex_upload_cache_.clear();
+  ++vertex_upload_stamp_;
   vertex_upload_cache_chunk_ = UINT32_MAX;
   last_constant_chunk_[0] = last_constant_chunk_[1] = UINT32_MAX;
   return true;
@@ -1945,73 +1948,121 @@ bool Renderer::SetupVertexData(const RegisterFile& regs, Shader* vs, DrawConstan
                                const VertexRange& range) {
   const TranslatedShader& t = vs->translated;
   const bool use_ranges = REXCVAR_GET(carbon_gpu_vertex_ranges);
-  for (uint32_t i = 0; i < 96; ++i) {
-    c.vfetch[i * 2] = 0;
-    c.vfetch[i * 2 + 1] = 0;
-    if (!(t.vfetch_used[i >> 5] & (1u << (i & 31)))) {
-      continue;
-    }
-    xenos::xe_gpu_vertex_fetch_t fetch = regs.GetVertexFetch(i);
-    uint32_t address = fetch.address << 2;
-    uint32_t size = fetch.size << 2;
-    if (fetch.type != xenos::FetchConstantType::kVertex || !size) {
-      // Point at a zeroed dword so reads are defined.
-      size = 0;
-    }
-    size = std::min<uint32_t>(size, uint32_t(chunk_size_ / 4));
-    uint64_t key = (uint64_t(address) << 32) | size;
+  const bool upload_ranges = use_ranges && REXCVAR_GET(carbon_gpu_vertex_upload_ranges);
+  std::memset(c.vfetch, 0, sizeof(c.vfetch));
+  if (vertex_upload_slots_.empty()) {
+    vertex_upload_slots_.resize(kVertexUploadSlots);
+  }
+  // Only the fetch constants the shader uses (the others stay 0).
+  for (uint32_t word = 0; word < 3; ++word) {
+    for (uint32_t bits = t.vfetch_used[word]; bits; bits &= bits - 1) {
+      const uint32_t i = word * 32 + uint32_t(__builtin_ctz(bits));
+      xenos::xe_gpu_vertex_fetch_t fetch = regs.GetVertexFetch(i);
+      uint32_t address = fetch.address << 2;
+      uint32_t size = fetch.size << 2;
+      if (fetch.type != xenos::FetchConstantType::kVertex || !size) {
+        // Point at a zeroed dword so reads are defined.
+        size = 0;
+      }
+      size = std::min<uint32_t>(size, uint32_t(chunk_size_ / 4));
+      uint64_t key = (uint64_t(address) << 32) | size;
 
-    if (size) {
       uint32_t lo = 0, hi = size;
-      uint32_t stride = t.vfetch_stride[i];
-      if (use_ranges && range.known && stride && !(t.vfetch_computed[i >> 5] & (1u << (i & 31)))) {
-        uint64_t lo64 = uint64_t(range.min_index) * stride * 4;
-        uint64_t hi64 = (uint64_t(range.max_index) * stride +
-                         std::max<uint32_t>(stride, t.vfetch_extent[i])) * 4;
-        lo = uint32_t(std::min<uint64_t>(lo64, size));
-        hi = uint32_t(std::min<uint64_t>(hi64, size));
-      }
-      uint32_t arena_dwords;
-      if (ArenaFetch(key, address, size, lo, hi, arena_dwords)) {
-        c.vfetch[i * 2] = arena_dwords;
-        c.vfetch[i * 2 + 1] = uint32_t(fetch.endian) | 0x80000000u;
-        ++stats_.arena_draws;
-        continue;
-      }
-    }
-    ++stats_.chunk_vertex_draws;
-    if (vertex_upload_cache_chunk_ != current_chunk_) {
-      vertex_upload_cache_.clear();
-      vertex_upload_cache_chunk_ = current_chunk_;
-    }
-    auto it = vertex_upload_cache_.find(key);
-    uint32_t dword_offset;
-    const uint8_t* vsrc = physical_base_ + (address & 0x1FFFFFFF);
-    // Small buffers only: big ones keep the plain per-frame reuse (hashing them per draw costs too much).
-    const uint64_t vhash = (size && size <= 64 * 1024) ? HashBytes(vsrc, size, 0) : 0;
-    if (size && size <= 64 * 1024) stats_.hash_bytes[3] += size;
-    if (it != vertex_upload_cache_.end() && it->second.hash == vhash) {
-      dword_offset = it->second.dword_offset;
-    } else {
-      UploadAllocation a = Upload(std::max<uint32_t>(size, 16), 16);
-      if (a.chunk != vertex_upload_cache_chunk_) {
-        // A new chunk was started: the set 0 of this draw must use it, and
-        // anything uploaded before is in the old chunk. Callers reserve
-        // enough space up front, so this is rare; redo the whole draw setup.
-        vertex_upload_cache_.clear();
-        vertex_upload_cache_chunk_ = a.chunk;
-        return false;
-      }
+      bool ranged = false;
       if (size) {
-        std::memcpy(a.ptr, vsrc, size);
-      } else {
-        std::memset(a.ptr, 0, 16);
+        uint32_t stride = t.vfetch_stride[i];
+        if (use_ranges && range.known && stride && !(t.vfetch_computed[i >> 5] & (1u << (i & 31)))) {
+          uint64_t lo64 = uint64_t(range.min_index) * stride * 4;
+          uint64_t hi64 = (uint64_t(range.max_index) * stride +
+                           std::max<uint32_t>(stride, t.vfetch_extent[i])) * 4;
+          lo = uint32_t(std::min<uint64_t>(lo64, size));
+          hi = uint32_t(std::min<uint64_t>(hi64, size));
+          ranged = true;
+        }
+        uint32_t arena_dwords;
+        if (ArenaFetch(key, address, size, lo, hi, arena_dwords)) {
+          c.vfetch[i * 2] = arena_dwords;
+          c.vfetch[i * 2 + 1] = uint32_t(fetch.endian) | 0x80000000u;
+          ++stats_.arena_draws;
+          continue;
+        }
       }
-      dword_offset = uint32_t(a.offset / 4);
-      vertex_upload_cache_[key] = {dword_offset, vhash};
+      ++stats_.chunk_vertex_draws;
+      if (vertex_upload_cache_chunk_ != current_chunk_) {
+        ++vertex_upload_stamp_;
+        vertex_upload_cache_chunk_ = current_chunk_;
+      }
+      // The whole buffer unless the draw's index range is known (then only the bytes it reaches).
+      if (!(upload_ranges && ranged) || hi <= lo) {
+        lo = 0;
+        hi = size;
+      }
+      const uint32_t len = hi - lo;
+      const uint8_t* vsrc = physical_base_ + (address & 0x1FFFFFFF);
+      // Small ranges only: big ones keep the plain per-chunk reuse (hashing them per draw costs too much).
+      const uint64_t vhash = (len && len <= 64 * 1024) ? HashBytes(vsrc + lo, len, 0) : 0;
+      if (len && len <= 64 * 1024) stats_.hash_bytes[3] += len;
+
+      const uint64_t mix = key ^ (uint64_t(lo) * 0x9E3779B97F4A7C15ull) ^ (uint64_t(hi) << 17);
+      const size_t mask = kVertexUploadSlots - 1;
+      size_t start = size_t((mix ^ (mix >> 29)) * 0xBF58476D1CE4E5B9ull >> 40) & mask;
+      VertexUploadSlot* found = nullptr;
+      VertexUploadSlot* free_slot = nullptr;
+      for (size_t probe = 0; probe < kVertexUploadProbes; ++probe) {
+        VertexUploadSlot& slot = vertex_upload_slots_[(start + probe) & mask];
+        if (slot.stamp != vertex_upload_stamp_) {
+          if (!free_slot) free_slot = &slot;
+          break;
+        }
+        if (slot.key == key && slot.lo == lo && slot.hi == hi) {
+          found = &slot;
+          break;
+        }
+      }
+      uint32_t dword_offset;
+      if (found && found->hash == vhash) {
+        dword_offset = found->dword_offset;
+      } else {
+        UploadAllocation a = Upload(std::max<uint32_t>(len, 16), 16);
+        if (a.chunk != vertex_upload_cache_chunk_) {
+          // A new chunk was started: the set 0 of this draw must use it, and
+          // anything uploaded before is in the old chunk. Callers reserve
+          // enough space up front, so this is rare; redo the whole draw setup.
+          ++vertex_upload_stamp_;
+          vertex_upload_cache_chunk_ = a.chunk;
+          return false;
+        }
+        if (a.offset < lo) {
+          // The shader adds the index offset to this base: it cannot start before the chunk.
+          // Only at the very start of a chunk; copy the whole buffer instead.
+          a = Upload(std::max<uint32_t>(size, 16), 16);
+          if (a.chunk != vertex_upload_cache_chunk_) {
+            ++vertex_upload_stamp_;
+            vertex_upload_cache_chunk_ = a.chunk;
+            return false;
+          }
+          std::memcpy(a.ptr, vsrc, size);
+          c.vfetch[i * 2] = uint32_t(a.offset / 4);
+          c.vfetch[i * 2 + 1] = uint32_t(fetch.endian);
+          continue;
+        }
+        if (len) {
+          std::memcpy(a.ptr, vsrc + lo, len);
+        } else {
+          std::memset(a.ptr, 0, 16);
+        }
+        dword_offset = uint32_t((a.offset - lo) / 4);
+        VertexUploadSlot* slot = found ? found : free_slot ? free_slot : &vertex_upload_slots_[start];
+        slot->key = key;
+        slot->lo = lo;
+        slot->hi = hi;
+        slot->hash = vhash;
+        slot->stamp = vertex_upload_stamp_;
+        slot->dword_offset = dword_offset;
+      }
+      c.vfetch[i * 2] = dword_offset;
+      c.vfetch[i * 2 + 1] = uint32_t(fetch.endian);
     }
-    c.vfetch[i * 2] = dword_offset;
-    c.vfetch[i * 2 + 1] = uint32_t(fetch.endian);
   }
   return true;
 }
