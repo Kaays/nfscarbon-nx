@@ -328,6 +328,8 @@ Texture* Renderer::GetOrCreateResolveTexture(uint32_t base_address, uint32_t wid
   Texture* raw = t.get();
   textures_.emplace(base_address, std::move(t));
   resolved_textures_.push_back(raw);
+  // A resolved texture takes priority over memory ones at its address (GetTexture).
+  ++texture_bind_epoch_;
   return raw;
 }
 
@@ -653,6 +655,56 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
   }
   constexpr uint32_t kMaxDescriptors = 64;
   const uint32_t descriptor_count = std::min(ts.texture_descriptor_count, kMaxDescriptors);
+
+  // Same shader and same fetch constants as a draw earlier in the frame: replay its result.
+  const uint32_t binding_count = uint32_t(ts.textures.size());
+  bool cacheable = !tracing_ && binding_count <= kBindCacheMax;
+  uint32_t raw[kBindCacheMax * 6];
+  uint64_t bind_key = 0;
+  if (cacheable) {
+    for (uint32_t i = 0; i < binding_count; ++i) {
+      std::memcpy(&raw[i * 6], &regs.values[kRegFetchConstants + ts.textures[i].fetch_index * 6],
+                  6 * sizeof(uint32_t));
+    }
+    bind_key = HashBytes(raw, binding_count * 6 * sizeof(uint32_t),
+                         uint64_t(reinterpret_cast<uintptr_t>(shader)));
+    auto hit = texture_bind_cache_.find(bind_key);
+    if (hit != texture_bind_cache_.end()) {
+      const TextureBindEntry& e = hit->second;
+      bool valid = e.shader == shader && e.epoch == texture_bind_epoch_ &&
+                   e.count == binding_count &&
+                   std::memcmp(e.raw, raw, binding_count * 6 * sizeof(uint32_t)) == 0;
+      for (uint32_t i = 0; valid && i < binding_count; ++i) {
+        const Texture* t = e.slots[i].texture;
+        valid = !t || (t->resolve_gen == e.slots[i].gen &&
+                       t->layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        // Several resolved textures can share an address (the shadow maps at one base, three
+        // sizes): a resolve into another one can change which of them the lookup picks.
+        if (valid && e.slots[i].resolved_base) {
+          valid = FindResolvedTexture(e.slots[i].resolved_base, 0, 0) == t;
+        }
+      }
+      if (valid) {
+        for (uint32_t i = 0; i < binding_count; ++i) {
+          const TextureBindEntry::Slot& s = e.slots[i];
+          const uint32_t fi = s.fi;
+          c.tex_info[fi * 4 + 0] = s.info[0];
+          c.tex_info[fi * 4 + 1] = s.info[1];
+          c.tex_info[fi * 4 + 2] = s.info[2];
+          std::memcpy(&c.tex_size[fi * 4], s.size, sizeof(s.size));
+          c.tex_uv[fi * 4 + 0] = s.uv[0];
+          c.tex_uv[fi * 4 + 1] = s.uv[1];
+        }
+        set_out = e.set;
+        ++stats_.tex_binds_reused;
+        return;
+      }
+    }
+  }
+  ++stats_.tex_binds_built;
+  TextureBindEntry::Slot slots[kBindCacheMax];
+  uint32_t slot_count = 0;
+
   VkDescriptorImageInfo infos[kMaxDescriptors];
   std::memset(infos, 0, sizeof(VkDescriptorImageInfo) * descriptor_count);
   for (const TextureBinding& b : ts.textures) {
@@ -661,6 +713,11 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
     Texture* t = nullptr;
     if (GuestTextureFromFetch(fetch, g)) {
       t = GetTexture(g, true);
+      // Not kept: a failed texture (retried next draw) and cubes put together from resolved
+      // faces (GetCubeFromResolvedFaces re-copies the faces when they change).
+      if (!t || (g.dimension == xenos::DataDimension::kCube && t->resolved)) {
+        cacheable = false;
+      }
     }
     uint32_t fi = b.fetch_index;
     VkSampler sampler = GetSampler(fetch, b, t && t->resolved);
@@ -709,6 +766,17 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
     if (t && t->resolved) {
       c.tex_uv[fi * 4 + 0] = float(g.width) * t->res_scale / float(t->width);
       c.tex_uv[fi * 4 + 1] = float(g.height) * t->res_scale / float(t->height);
+    }
+    if (cacheable) {
+      TextureBindEntry::Slot& s = slots[slot_count++];
+      s.fi = fi;
+      std::memcpy(s.info, &c.tex_info[fi * 4], sizeof(s.info));
+      std::memcpy(s.size, &c.tex_size[fi * 4], sizeof(s.size));
+      s.uv[0] = c.tex_uv[fi * 4 + 0];
+      s.uv[1] = c.tex_uv[fi * 4 + 1];
+      s.texture = t;
+      s.gen = t ? t->resolve_gen : 0;
+      s.resolved_base = t && t->resolved ? g.base_address : 0;
     }
     if (t && t->layout != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
       // Resolved textures are left readable after the copy; anything else is
@@ -765,9 +833,20 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
   // Draws that bind the same textures and samplers share one descriptor set.
   uint64_t cache_key = HashBytes(infos, sizeof(VkDescriptorImageInfo) * descriptor_count,
                                  descriptor_count);
+  auto remember = [&](VkDescriptorSet set) {
+    if (!cacheable || !set || slot_count != binding_count) return;
+    TextureBindEntry& e = texture_bind_cache_[bind_key];
+    e.shader = shader;
+    e.epoch = texture_bind_epoch_;
+    e.set = set;
+    e.count = binding_count;
+    std::memcpy(e.raw, raw, binding_count * 6 * sizeof(uint32_t));
+    std::copy(slots, slots + slot_count, e.slots);
+  };
   auto cached = texture_set_cache_.find(cache_key);
   if (cached != texture_set_cache_.end()) {
     set_out = cached->second;
+    remember(set_out);
     return;
   }
   VkDescriptorSet set = AllocateDescriptorSet(GetTextureSetLayout(ts.texture_descriptor_count));
@@ -787,10 +866,13 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
                                                      nullptr);
   texture_set_cache_.emplace(cache_key, set);
   set_out = set;
+  remember(set);
 }
 
 void Renderer::EvictResources() {
   const auto& dfn = vulkan_device_->functions();
+  texture_bind_cache_.clear();
+  ++texture_bind_epoch_;
   constexpr uint64_t kMinAge = 8;         // frames; longer than the frames in flight
   constexpr uint64_t kStaleAge = 1800;    // frames; always freed
 

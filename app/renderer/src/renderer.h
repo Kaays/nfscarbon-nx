@@ -478,6 +478,29 @@ class Renderer {
   } cmd_;
   // Texture descriptor sets already built this frame, by binding contents.
   std::unordered_map<uint64_t, VkDescriptorSet> texture_set_cache_;
+  // Whole BindTextures results this frame, by shader and the raw fetch constants it reads: a
+  // draw that repeats them (the second scene tile, the reflection faces, objects sharing a
+  // material) skips the texture, sampler and view lookups. Valid while the textures it used have
+  // not been resolved into again (resolve_gen) and no resolved texture appeared (epoch).
+  static constexpr uint32_t kBindCacheMax = 8;
+  struct TextureBindEntry {
+    const Shader* shader = nullptr;
+    uint64_t epoch = 0;
+    VkDescriptorSet set = VK_NULL_HANDLE;
+    uint32_t count = 0;
+    uint32_t raw[kBindCacheMax * 6];
+    struct Slot {
+      uint32_t fi;
+      uint32_t info[3];
+      float size[4];
+      float uv[2];
+      Texture* texture;
+      uint64_t gen;
+      uint32_t resolved_base;  // a resolved texture found by address: still the one found
+    } slots[kBindCacheMax];
+  };
+  std::unordered_map<uint64_t, TextureBindEntry> texture_bind_cache_;
+  uint64_t texture_bind_epoch_ = 0;
   std::vector<uint32_t> scratch_indices_;
   // Fused index conversion for plain indexed draws: converts into the upload
   // buffer and returns the range of vertex indices used.
@@ -615,6 +638,7 @@ class Renderer {
     uint64_t upload_kind_bytes[5] = {};
     // Float constant uploads: by packed shaders, by relatively addressed ones (whole 4 KiB), and
     // the bytes the packed ones saved against uploading registers 0..highest read.
+    uint32_t tex_binds_reused = 0, tex_binds_built = 0;
     uint32_t const_uploads_packed = 0, const_uploads_full = 0;
     uint64_t const_bytes_saved = 0;
     double gpu_total_s = 0, gpu_tag_s[5] = {};

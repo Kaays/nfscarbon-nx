@@ -762,6 +762,8 @@ bool Renderer::BeginFrame() {
   f.chunks.clear();
   dfn.vkResetDescriptorPool(vk_device_, f.descriptor_pool, 0);
   texture_set_cache_.clear();
+  texture_bind_cache_.clear();
+  ++texture_bind_epoch_;
   cmd_ = CmdCache();
   if (warmup_pending_.exchange(false)) {
     RunPipelineWarmup();
@@ -3408,6 +3410,8 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
           "addressing), {:.2f} MiB saved by packing",
           stats_.const_uploads_packed / frames, stats_.const_uploads_full / frames,
           double(stats_.const_bytes_saved) / frames / (1024.0 * 1024.0));
+      REXGPU_INFO("[carbon-gpu] texture binds per frame: {:.0f} reused, {:.0f} built",
+                  stats_.tex_binds_reused / frames, stats_.tex_binds_built / frames);
       if (REXCVAR_GET(carbon_gpu_draw_profile)) {
         const double ms = 1000.0 / frames;
         const double mib = 1.0 / frames / (1024.0 * 1024.0);
