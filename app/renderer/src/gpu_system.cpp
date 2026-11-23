@@ -23,9 +23,14 @@
 #include "command_processor.h"
 #include "renderer.h"
 
-REXCVAR_DEFINE_BOOL(carbon_gpu_vsync, true, "CarbonGPU",
-                    "Pace guest vblank interrupts at the video mode refresh rate. false = 1 kHz "
-                    "(uncapped, for benchmarking)");
+// Off by default: the game waits for a vblank after each frame, so at 60 Hz a frame of 17-20 ms
+// was held to 33.3 ms (races locked at 30 even with 40 or 60 FPS asked) and one of 34 ms to 50 ms
+// (Race Wars starts at 16-22 FPS instead of 23-30). At 1 kHz the wait ends at once and the frame
+// rate is set by carbon_gpu_fps_cap alone. The game's clock does not count vblanks (1000 a second
+// did not speed it up).
+REXCVAR_DEFINE_BOOL(carbon_gpu_vsync, false, "CarbonGPU",
+                    "Pace guest vblank interrupts at the video mode refresh rate (60 Hz). false = "
+                    "1 kHz: no vblank wait, frame rate set by carbon_gpu_fps_cap");
 
 REXCVAR_DEFINE_BOOL(carbon_gpu_watchdog, true, "CarbonGPU",
                     "Log the command processor state every 3 seconds (debugging)");

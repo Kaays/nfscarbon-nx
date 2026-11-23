@@ -15,6 +15,12 @@ nfscarbon_renderer = "carbon"
 # nfscarbon_options.txt, which wins over this file; takes effect at once).
 carbon_gpu_fps_cap = 30
 
+# Guest vblank interrupts at the screen's 60 Hz (true) or at 1 kHz (false). The game
+# waits for a vblank after each frame: at 60 Hz a frame just over 16.7 ms waits until
+# 33.3 ms, so races sat at 30 with any FPS Limit and heavy scenes dropped from ~28
+# to 20. false leaves the pacing to carbon_gpu_fps_cap.
+carbon_gpu_vsync = false
+
 # Render resolution in percent of the game's 1280x720 (handheld: 100). 50 = 360p,
 # 67 = 480p, 83 = 600p, 100 = 720p, 150 = 1080p (drawn at 1080p, shown at 720p).
 # Also in the game: Options > Video > Resolution (saved in nfscarbon_options.txt,
