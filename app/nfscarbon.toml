@@ -11,6 +11,8 @@ nfscarbon_renderer = "carbon"
 
 # Frame rate cap applied when the game presents (0 = none). Carbon targets 30
 # on the Xbox 360; the Switch's three 1 GHz cores will not hold more for now.
+# Also in the game: Options > Video > FPS Limit (30 / 40 / 60; saved in
+# nfscarbon_options.txt, which wins over this file; takes effect at once).
 carbon_gpu_fps_cap = 30
 
 # Render resolution in percent of the game's 1280x720 (handheld: 100). 50 = 360p,

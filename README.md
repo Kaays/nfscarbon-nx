@@ -171,7 +171,7 @@ Core 3 is shared with the system (HOME menu, overlays, background services): not
 ## Settings
 
 Most visual settings are also in the game itself, under **Options > Video** (Motion Blur, Anti-Aliasing, Scene
-Detail, Car Reflections, Anisotropic Filtering, Resolution, Rear-View Mirror). What you choose there is saved in
+Detail, Car Reflections, Anisotropic Filtering, Resolution, FPS Limit, Rear-View Mirror). What you choose there is saved in
 `nfscarbon_options.txt` next to the NRO and wins over the toml; Resolution applies after a restart.
 
 `nfscarbon.toml` describes each setting. The main ones:

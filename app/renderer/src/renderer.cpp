@@ -3134,7 +3134,14 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
     cap_next_ = 0.0;
   }
   // Re-read fps_cap_ each frame so runtime cvar changes take effect immediately.
-  fps_cap_ = REXCVAR_GET(carbon_gpu_fps_cap);
+  {
+    const int32_t cap = REXCVAR_GET(carbon_gpu_fps_cap);
+    if (cap != fps_cap_) {
+      REXGPU_INFO("[carbon-gpu] fps cap {} -> {}", fps_cap_, cap);
+      cap_next_ = 0.0;
+    }
+    fps_cap_ = cap;
+  }
   skip_redundant_resolves_ = REXCVAR_GET(carbon_gpu_skip_redundant_resolves);
 
 #if defined(__ANDROID__)

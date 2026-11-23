@@ -105,6 +105,13 @@ Row g_rows[] = {
       {"Quality (720p)", "carbon_gpu_render_scale=100"},
       {"Ultra Quality (1080p)", "carbon_gpu_render_scale=150"}},
      5, 3, 3},
+    // Upper limit of the frame rate (carbon_gpu_fps_cap, read by the renderer every frame, so it
+    // takes effect at once). Only a ceiling: a heavy scene still runs as fast as the device can.
+    // The Switch panel presents IMMEDIATE, so 40 is not held to 30/60 by vsync.
+    {"fps_limit", "FPS Limit",
+     {{"30 FPS", "carbon_gpu_fps_cap=30"}, {"40 FPS", "carbon_gpu_fps_cap=40"},
+      {"60 FPS", "carbon_gpu_fps_cap=60"}},
+     3, 0, 0},
     // The rear-view mirror (and the boss picture-in-picture box) every frame or every other one.
     {"mirror", "Rear-View Mirror",
      {{"Full Rate", "carbon_gpu_mirror_half_rate=false"}, {"Half Rate", "carbon_gpu_mirror_half_rate=true"}},
