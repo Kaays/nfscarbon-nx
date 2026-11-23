@@ -22,6 +22,13 @@
 //                 samples with a per-sample gain ramp, the other 192 at the final gain. VMX in the game
 //                 (vmaddfp = multiply then add, two roundings), here the same lane-wise operations on
 //                 registers instead of through the PPC context.
+//   sub_826CCA20  biquad over 256-sample blocks of up to 6 channels (the per-voice filter):
+//                 y = x*c8 + x1*c12 + x2*c16 - y1*c0 - y2*c4, each step a double fma rounded to single,
+//                 in the game's order (it differs for the first two samples); a 1e-18 guard is added
+//                 from the third sample on. Runs on registers only when outputs overlap nothing it
+//                 reads; otherwise the recompiled function runs.
+//   sub_826CD528  scale: dst[i] = src[i] * gain. Aligned blocks of 64 use VMX (flush to zero), anything
+//                 else the scalar fmuls loop.
 //   sub_826B56A8  sample unpack, mode 1 (big-endian int16 to float * 2^-15), from zofo007's
 //                 NFS-Carbon-NX (src/audio_unpack_fast.h, GPL-3.0); other modes run the recompiled code.
 //
@@ -350,6 +357,153 @@ bool TryUnpackMode1(Ctx& ctx, uint8_t* base) {
   return true;
 }
 
+// ---- sub_826CCA20: biquad ------------------------------------------------------------------------
+// r3 = state (x history at +8ch: x[-1], x[-2]; y history at +48+8ch: y[-1], y[-2]), r4 = voice (two
+// buffer descriptors at +0x3000C (input) and +0x30010 (output): +4 data, +14 channel stride in floats,
+// swapped at the end), r5 = coefficients c0, c4, c8, c12, c16 (by byte offset), r6 = channels.
+// Every step is what the recompiled code does: double multiply-add, then rounded to single.
+namespace biquad {
+inline float Muls(double a, double b) { return Rounded(float(a * b)); }
+inline float Madds(double a, double b, double c) { return float(std::fma(a, b, c)); }
+inline float Nmsubs(double a, double b, double c) { return float(-std::fma(a, b, -c)); }
+inline float Adds(double a, double b) { return float(a + b); }
+
+struct Range {
+  uint32_t at, len;
+};
+inline bool Overlap(const Range& a, const Range& b) {
+  return uint64_t(a.at) < uint64_t(b.at) + b.len && uint64_t(b.at) < uint64_t(a.at) + a.len;
+}
+}  // namespace biquad
+
+constexpr uint32_t kBiquadMaxChannels = 6;
+
+// Returns false (nothing written) when this cannot run on registers with the same result: the
+// recompiled code reads back what it wrote, so outputs must not overlap any input, the coefficients,
+// the history or each other, and the history must not overlap the inputs.
+inline bool Biquad(uint8_t* base, uint32_t state, uint32_t voice, uint32_t coef, uint32_t channels) {
+  using namespace biquad;
+  if (channels == 0 || channels > kBiquadMaxChannels) return false;
+  const uint32_t in_desc = Load32(base, voice + 0x3000C), out_desc = Load32(base, voice + 0x30010);
+  const uint32_t in_data = Load32(base, in_desc + 4), out_data = Load32(base, out_desc + 4);
+  uint16_t s;
+  std::memcpy(&s, base + in_desc + 14, 2);
+  const uint32_t in_stride = __builtin_bswap16(s);
+  std::memcpy(&s, base + out_desc + 14, 2);
+  const uint32_t out_stride = __builtin_bswap16(s);
+
+  Range in[kBiquadMaxChannels], out[kBiquadMaxChannels];
+  const Range coefs{coef, 20}, hist{state, 48 + 8 * channels};
+  const uint32_t region = state >> 29;
+  const auto same_region = [region](const Range& r) {
+    return (r.at >> 29) == region && ((uint64_t(r.at) + r.len - 1) >> 29) == region;
+  };
+  if (!same_region(coefs) || !same_region(hist)) return false;
+  for (uint32_t ch = 0; ch < channels; ++ch) {
+    in[ch] = {in_data + 4 * in_stride * ch, 1024};
+    out[ch] = {out_data + 4 * out_stride * ch, 1024};
+    if (!same_region(in[ch]) || !same_region(out[ch]) || Overlap(out[ch], coefs) ||
+        Overlap(out[ch], hist) || Overlap(in[ch], hist)) {
+      return false;
+    }
+  }
+  for (uint32_t a = 0; a < channels; ++a)
+    for (uint32_t b = 0; b < channels; ++b)
+      if (Overlap(out[a], in[b]) || (a != b && Overlap(out[a], out[b]))) return false;
+
+  const double c0 = LoadF(base, coef + 0), c4 = LoadF(base, coef + 4), c8 = LoadF(base, coef + 8);
+  const double c12 = LoadF(base, coef + 12), c16 = LoadF(base, coef + 16);
+  const double guard = LoadF(base, 0x820C7F28u);  // 1e-18
+  for (uint32_t ch = 0; ch < channels; ++ch) {
+    const uint32_t x = in[ch].at, y = out[ch].at, h = state + 8 * ch;
+    const double xm1 = LoadF(base, h + 0), xm2 = LoadF(base, h + 4);
+    const double ym1 = LoadF(base, h + 48), ym2 = LoadF(base, h + 52);
+    const float x0 = LoadF(base, x), x1 = LoadF(base, x + 4);
+    float v = Muls(c8, x0);  // fmuls f0,f0,f5
+    v = Madds(xm2, c16, v);
+    v = Madds(xm1, c12, v);
+    v = Nmsubs(ym1, c0, v);
+    v = Nmsubs(ym2, c4, v);
+    const float y0 = v;
+    StoreF(base, y, y0);
+    v = Muls(xm1, c16);
+    v = Madds(x1, c8, v);
+    v = Madds(x0, c12, v);
+    v = Nmsubs(c0, y0, v);
+    v = Nmsubs(ym1, c4, v);
+    StoreF(base, y + 4, v);
+    double a2 = x0, a1 = x1, b2 = y0, b1 = v;
+    for (uint32_t n = 2; n < 256; ++n) {
+      const float xn = LoadF(base, x + 4 * n);
+      float r = Muls(a2, c16);
+      r = Madds(a1, c12, r);
+      r = Madds(xn, c8, r);
+      r = Adds(r, guard);
+      r = Nmsubs(b1, c0, r);
+      r = Nmsubs(b2, c4, r);
+      StoreF(base, y + 4 * n, r);
+      a2 = a1;
+      a1 = xn;
+      b2 = b1;
+      b1 = r;
+    }
+    StoreF(base, h + 4, float(a2));   // x[254]
+    StoreF(base, h + 0, float(a1));   // x[255]
+    StoreF(base, h + 52, float(b2));  // y[254]
+    StoreF(base, h + 48, float(b1));  // y[255]
+  }
+  Store32(base, voice + 0x3000C, out_desc);
+  Store32(base, voice + 0x30010, in_desc);
+  return true;
+}
+
+template <typename Ctx>
+bool BiquadCall(Ctx& ctx, uint8_t* base) {
+  const uint32_t channels = ctx.r6.u32;
+  if (channels == 0 || channels > kBiquadMaxChannels) return false;
+  const uint32_t voice = ctx.r4.u32;
+  const uint32_t out_desc = Load32(base, voice + 0x30010);
+  uint16_t s;
+  std::memcpy(&s, base + out_desc + 14, 2);
+  const uint32_t out_stride = __builtin_bswap16(s);
+  ctx.fpscr.disableFlushMode();
+  if (!Biquad(base, ctx.r3.u32, voice, ctx.r5.u32, channels)) return false;
+  // What the recompiled function leaves in r3 (lhz r3,14(r9); mullw r3,r3,r10 for the last channel).
+  ctx.r3.s64 = int64_t(out_stride) * int64_t(channels - 1);
+  return true;
+}
+
+// ---- sub_826CD528: scale -------------------------------------------------------------------------
+// r3 = dst, r4 = src, r6 = count, f1 = gain. Blocks are done in the game's order (all 8 vectors of a
+// 128-byte block loaded before any is stored), so overlapping buffers give the same result.
+template <typename Ctx>
+bool ScaleCall(Ctx& ctx, uint8_t* base) {
+  const uint32_t dst = ctx.r3.u32, src = ctx.r4.u32, count = ctx.r6.u32;
+  if (((dst | src) & 127) == 0 && (count & 63) == 0) {
+    if (count == 0 || count > (1u << 22)) return false;  // count 0 would loop through memory in the game
+    ctx.fpscr.disableFlushMode();
+    const float gain = float(ctx.f1.f64);  // stfs f1 (no flush)
+    ctx.fpscr.enableFlushMode();           // vmulfp flushes denormals
+    const simde__m128 g = simde_mm_set1_ps(gain);
+    for (uint32_t at = 0; at < count * 4; at += 128) {
+      simde__m128 v[8];
+      for (int k = 0; k < 8; ++k) v[k] = ramp::LoadV(base, src + at + 16 * k);
+      for (int k = 0; k < 8; ++k) ramp::StoreV(base, dst + at + 16 * k, simde_mm_mul_ps(g, v[k]));
+    }
+    ctx.r3.u64 = dst + count * 4;
+    return true;
+  }
+  const uint32_t end = dst + (count << 2);
+  if (dst >= end) return true;
+  ctx.fpscr.disableFlushMode();
+  const double gain = ctx.f1.f64;  // fmuls uses the whole register
+  const uint32_t delta = src - dst;
+  for (uint32_t a = dst; a < end; a += 4) {
+    StoreF(base, a, float(double(LoadF(base, a + delta)) * gain));
+  }
+  return true;
+}
+
 }  // namespace nfscarbon::audio_native
 
 #ifndef NFSCARBON_AUDIO_NATIVE_TEST
@@ -508,6 +662,20 @@ extern "C" REX_FUNC(sub_826D15D0) {
   ctx.fpscr.disableFlushMode();
   ctx.r3.u64 = nfscarbon::audio_native::Resample(base, ctx.r3.s32, ctx.r4.u32, ctx.r5.u32, ctx.r6.u32,
                                                  ctx.r7.u32, ctx.r8.u32, ctx.r9.u32);
+}
+
+extern "C" void __imp__sub_826CCA20(PPCContext& __restrict ctx, uint8_t* base);
+extern "C" REX_FUNC(sub_826CCA20) {
+  if (!REXCVAR_GET(nfscarbon_audio_native) || !nfscarbon::audio_native::BiquadCall(ctx, base)) {
+    __imp__sub_826CCA20(ctx, base);
+  }
+}
+
+extern "C" void __imp__sub_826CD528(PPCContext& __restrict ctx, uint8_t* base);
+extern "C" REX_FUNC(sub_826CD528) {
+  if (!REXCVAR_GET(nfscarbon_audio_native) || !nfscarbon::audio_native::ScaleCall(ctx, base)) {
+    __imp__sub_826CD528(ctx, base);
+  }
 }
 
 #endif
