@@ -53,9 +53,12 @@ constexpr uint32_t kBufferBytes = kBufferSamples * 2 * sizeof(s16);
 // audout wants page-aligned sample memory.
 constexpr uint32_t kBufferAllocBytes = (kBufferBytes + 0xFFF) & ~0xFFFu;
 
-// Above guest threads (0x3B) so the device is never starved, like the audio
-// pump of MarathonRecomp-NX (0x2B).
-constexpr int kOutputThreadPriority = 0x2B;
+// Above every other thread of the process, including nfscarbon-nx's audio mixer (0x2A,
+// app/src/audio_thread_hook.cpp). This thread is created on the default core only and does
+// about 1.5 % of a core of work, but at 0x2B it sat behind the mixer whenever the mixer ran
+// flat out on core 0 (Race Wars starts at stock clocks): 0.5-1 s without a turn, the device
+// ran dry and the loop took the gap for HOME or sleep and restarted the output.
+constexpr int kOutputThreadPriority = 0x29;
 constexpr size_t kOutputThreadStack = 0x10000;
 // Bounded so the thread notices shutdown even if the device stops releasing.
 constexpr u64 kWaitTimeoutNs = 100'000'000;

@@ -42,7 +42,16 @@
 #if REX_PLATFORM_SWITCH
 // sdk/src/core/threading_switch.cpp
 extern "C" bool RexSwitchSetCurrentThreadPriorityOk(int priority);
+extern "C" bool RexSwitchPinCurrentThreadToCore(int core);
 #endif
+
+// Off by default (-1). See carbon_gpu_command_core (app/renderer/src/renderer.cpp): at 0x2A the
+// mixer can hold a core for a second at a Race Wars start, and a thread that shares that core waits.
+REXCVAR_DEFINE_INT32(nfscarbon_audio_mixer_core, -1, "Carbon",
+                     "Switch: pin the game's audio mixer thread to this core (0-3); -1 = let Horizon "
+                     "choose")
+    .range(-1, 3)
+    .lifecycle(rex::cvar::Lifecycle::kInitOnly);
 
 REXCVAR_DEFINE_INT32(nfscarbon_audio_mixer_priority, 0x2A, "Carbon",
                      "Switch: Horizon priority of the game's audio mixer thread (RWAudioCore Dac). "
@@ -60,6 +69,11 @@ extern "C" REX_FUNC(sub_826C6CD0) {
     const bool ok = RexSwitchSetCurrentThreadPriorityOk(int(priority));
     REXLOG_INFO("[audio] mixer thread (RWAudioCore Dac) at priority {:#x} ({})", uint32_t(priority),
                 ok ? "accepted" : "REFUSED by the kernel");
+  }
+  const int32_t core = REXCVAR_GET(nfscarbon_audio_mixer_core);
+  if (core >= 0) {
+    const bool pinned = RexSwitchPinCurrentThreadToCore(int(core));
+    REXLOG_INFO("[audio] mixer thread pinned to core {}: {}", core, pinned ? "ok" : "refused");
   }
 #endif
   __imp__sub_826C6CD0(ctx, base);

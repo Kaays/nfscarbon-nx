@@ -721,7 +721,29 @@ void Renderer::Shutdown() {
   // The process is exiting; the device and allocator die with the provider.
 }
 
-void Renderer::OnCommandThreadStart() {}
+// Off by default (-1): pins the GPU command thread to one core. Horizon moves a woken thread to
+// another core only when that core is idle, so with all four cores busy the command thread
+// (0x2C) can wait behind the audio mixer (0x2A) on a shared core: a Race Wars start at stock
+// clocks had a 1.9 s frame with 38 ms of draws and no command processor idle time. Pinning it
+// and the mixer (nfscarbon_audio_mixer_core) to different cores keeps them apart; a pinned
+// thread can still wait if its own core saturates, hence the test cvar.
+REXCVAR_DEFINE_INT32(carbon_gpu_command_core, -1, "CarbonGPU",
+                     "Switch: pin the GPU command thread to this core (0-3); -1 = let Horizon choose")
+    .range(-1, 3);
+
+#if defined(__SWITCH__)
+extern "C" bool RexSwitchPinCurrentThreadToCore(int core);
+#endif
+
+void Renderer::OnCommandThreadStart() {
+#if defined(__SWITCH__)
+  const int32_t core = REXCVAR_GET(carbon_gpu_command_core);
+  if (core >= 0) {
+    const bool ok = RexSwitchPinCurrentThreadToCore(core);
+    REXGPU_INFO("[carbon-gpu] command thread pinned to core {}: {}", core, ok ? "ok" : "refused");
+  }
+#endif
+}
 
 void Renderer::OnCommandThreadStop() {
   if (frame_open_) {
