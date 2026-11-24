@@ -16,6 +16,9 @@
 
 REXCVAR_DECLARE(int32_t, carbon_gpu_max_anisotropy);
 
+REXCVAR_DEFINE_BOOL(carbon_gpu_texture_bind_diag, true, "CarbonGPU",
+                    "Measurement: for texture binds not found from earlier frames, find which "
+                    "fetch constant dword changed (costs some CPU)");
 REXCVAR_DEFINE_BOOL(carbon_gpu_texture_bind_carry, true, "CarbonGPU",
                     "Reuse a draw's texture lookups (textures, views, samplers) from an earlier "
                     "frame when its shader and fetch constants are the same; only the descriptor "
@@ -686,6 +689,7 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
   const uint32_t binding_count = uint32_t(ts.textures.size());
   bool cacheable = !tracing_ && binding_count <= kBindCacheMax;
   const TextureBindEntry* carried = nullptr;  // lookups from an earlier frame still valid
+  bool no_entry = false;                      // no entry at all for this key
   uint32_t raw[kBindCacheMax * 6];
   uint64_t bind_key = 0;
   if (cacheable) {
@@ -705,7 +709,10 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
         break;
       }
     }
-    if (!found) ++stats_.carry_miss[0];
+    if (!found) {
+      ++stats_.carry_miss[0];
+      no_entry = true;
+    }
     if (found) {
       const TextureBindEntry& e = *found;
       // Same frame: the whole result, descriptor set included. An earlier frame: the lookups only,
@@ -774,6 +781,25 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
         ++stats_.tex_binds_reused;
         return;
       }
+    }
+  }
+  if (cacheable && REXCVAR_GET(carbon_gpu_texture_bind_diag)) {
+    if (bind_diag_frame_ != frame_number_) {
+      bind_diag_frame_ = frame_number_;
+      for (uint32_t d = 0; d < 6; ++d) {
+        std::swap(bind_diag_prev_[d], bind_diag_cur_[d]);
+        bind_diag_cur_[d].clear();
+      }
+    }
+    // Only binds that reach here once per key per frame (the first draw of each key).
+    uint32_t tmp[kBindCacheMax * 6];
+    for (uint32_t d = 0; d < 6; ++d) {
+      std::memcpy(tmp, raw, binding_count * 6 * sizeof(uint32_t));
+      for (uint32_t i = 0; i < binding_count; ++i) tmp[i * 6 + d] = 0;
+      const uint64_t k = HashBytes(tmp, binding_count * 6 * sizeof(uint32_t),
+                                   uint64_t(reinterpret_cast<uintptr_t>(shader)) + d);
+      if (no_entry && bind_diag_prev_[d].count(k)) ++stats_.carry_diag[d];
+      bind_diag_cur_[d].insert(k);
     }
   }
   TextureBindEntry::Slot slots[kBindCacheMax];

@@ -537,7 +537,10 @@ class Renderer {
   static constexpr uint32_t kBindCacheSize = 8192;  // power of two; Race Wars starts build 3,000+ a frame
   std::vector<TextureBindEntry> texture_bind_cache_;  // empty unless epoch == texture_bind_epoch_
   uint64_t texture_bind_epoch_ = 1;
-  uint64_t texture_bind_gen_ = 1;  // bumped when a resolved texture is created or textures are evicted
+  uint64_t texture_bind_gen_ = 1;
+  // carbon_gpu_texture_bind_diag: keys of this and the previous frame with one fetch dword zeroed.
+  std::unordered_set<uint64_t> bind_diag_prev_[6], bind_diag_cur_[6];
+  uint64_t bind_diag_frame_ = 0;  // bumped when a resolved texture is created or textures are evicted
   std::vector<uint32_t> scratch_indices_;
   // Fused index conversion for plain indexed draws: converts into the upload
   // buffer and returns the range of vertex indices used.
@@ -688,6 +691,9 @@ class Renderer {
     // 2 not kept (cube / many descriptors / anisotropy), 3 shader or fetch constants differ,
     // 4 resolved lookup changed, 5 layout not read-only, 6 same-frame entry not valid.
     uint32_t carry_miss[7] = {};
+    // "No entry" binds whose key, with fetch constant dword d zeroed in every binding, was seen
+    // in the previous frame: which dword changes between frames.
+    uint32_t carry_diag[6] = {};
     uint32_t bind_gen_bumps = 0;
     // Bytes hashed to find changed guest data: vertex pages (static, sparse samples, dynamic),
     // vertex buffers uploaded per draw, textures.

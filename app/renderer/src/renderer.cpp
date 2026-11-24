@@ -3531,6 +3531,11 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
                   stats_.bind_gen_bumps, stats_.carry_miss[2] / frames,
                   stats_.carry_miss[3] / frames, stats_.carry_miss[4] / frames,
                   stats_.carry_miss[5] / frames, stats_.carry_miss[6] / frames);
+      REXGPU_INFO("[carbon-gpu] binds with no entry that match the previous frame except fetch "
+                  "dword: 0 {:.0f}, 1 {:.0f}, 2 {:.0f}, 3 {:.0f}, 4 {:.0f}, 5 {:.0f}",
+                  stats_.carry_diag[0] / frames, stats_.carry_diag[1] / frames,
+                  stats_.carry_diag[2] / frames, stats_.carry_diag[3] / frames,
+                  stats_.carry_diag[4] / frames, stats_.carry_diag[5] / frames);
       {
         const double mib = 1.0 / frames / (1024.0 * 1024.0);
         REXGPU_INFO("[carbon-gpu] hashed MiB per frame: vertex pages {:.2f} full + {:.2f} sparse, "
