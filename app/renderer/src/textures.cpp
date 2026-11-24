@@ -437,6 +437,10 @@ Texture* Renderer::GetCubeFromResolvedFaces(const GuestTexture& guest) {
     if (!CreateTextureImage(*t, 0)) return nullptr;
     t->resolved = true;
     c.cube = std::move(t);
+    // A new cube can get the old one's address: binds that kept the old pointer must not match.
+    ++texture_bind_epoch_;
+    ++texture_bind_gen_;
+    ++stats_.bind_gen_bumps;
     std::fill(std::begin(c.faces), std::end(c.faces), nullptr);
     if (cube_logged_.insert(key).second) {
       REXGPU_INFO("[carbon-gpu] cube {:08X} {}x{} format {}: put together from 6 resolved faces "
@@ -737,6 +741,17 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
         // Same frame: not resolved into since. An earlier frame: a resolved texture is resolved
         // into every frame (shadow maps, reflections); the image, its views and the lookup are
         // what matter, so the generation is not compared, the lookup below is.
+        if (e.slots[i].cube_from_faces) {
+          // The car reflection cube: GetCubeFromResolvedFaces copies the faces again when they
+          // were resolved into since, and must still return this cube.
+          GuestTexture g;
+          valid = GuestTextureFromFetch(regs.GetTextureFetch(ts.textures[i].fetch_index), g) &&
+                  GetCubeFromResolvedFaces(g) == t;
+          if (!valid) miss = 4;
+          valid = valid && t->layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+          if (!valid && miss < 0) miss = 5;
+          continue;
+        }
         valid = !same_frame || t->resolve_gen == e.slots[i].gen;
         // Several resolved textures can share an address (the shadow maps at one base, three
         // sizes): a resolve into another one can change which of them the lookup picks.
@@ -831,13 +846,14 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
     GuestTexture g;
     Texture* t = nullptr;
     if (GuestTextureFromFetch(fetch, g)) {
-      // Cubes may be put together from resolved faces from one frame to the next.
-      if (g.dimension == xenos::DataDimension::kCube) carry = false;
       t = GetTexture(g, true);
-      // Not kept: a failed texture (retried next draw) and cubes put together from resolved
-      // faces (GetCubeFromResolvedFaces re-copies the faces when they change).
-      if (!t || (g.dimension == xenos::DataDimension::kCube && t->resolved)) {
+      // Not kept: a failed texture (retried next draw). A cube from memory is not carried to a
+      // later frame (its faces may be resolved by then); one put together from resolved faces is
+      // kept and goes through GetCubeFromResolvedFaces again on every reuse.
+      if (!t) {
         cacheable = false;
+      } else if (g.dimension == xenos::DataDimension::kCube && !t->resolved) {
+        carry = false;
       }
     }
     uint32_t fi = b.fetch_index;
@@ -897,7 +913,8 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
       s.uv[1] = c.tex_uv[fi * 4 + 1];
       s.texture = t;
       s.gen = t ? t->resolve_gen : 0;
-      s.resolved_base = t && t->resolved ? g.base_address : 0;
+      s.cube_from_faces = t && t->resolved && g.dimension == xenos::DataDimension::kCube;
+      s.resolved_base = t && t->resolved && !s.cube_from_faces ? g.base_address : 0;
     }
     if (t && t->layout != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
       // Resolved textures are left readable after the copy; anything else is

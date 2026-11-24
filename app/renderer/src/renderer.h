@@ -525,6 +525,7 @@ class Renderer {
       Texture* texture;
       uint64_t gen;
       uint32_t resolved_base;  // a resolved texture found by address: still the one found
+      bool cube_from_faces;    // put together from resolved faces: refreshed and checked on reuse
     } slots[kBindCacheMax];
     // For a later frame (the descriptor set itself is per frame): the image infos, valid while
     // no texture was created as resolved or evicted (texture_bind_gen_) and the anisotropy cap is
