@@ -335,6 +335,7 @@ Texture* Renderer::GetOrCreateResolveTexture(uint32_t base_address, uint32_t wid
   // A resolved texture takes priority over memory ones at its address (GetTexture).
   ++texture_bind_epoch_;
   ++texture_bind_gen_;
+  ++stats_.bind_gen_bumps;
   ++resolve_epoch_;
   return raw;
 }
@@ -704,6 +705,7 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
         break;
       }
     }
+    if (!found) ++stats_.carry_miss[0];
     if (found) {
       const TextureBindEntry& e = *found;
       // Same frame: the whole result, descriptor set included. An earlier frame: the lookups only,
@@ -711,10 +713,16 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
       const bool same_frame = e.epoch == texture_bind_epoch_;
       bool valid = e.shader == shader && e.count == binding_count &&
                    std::memcmp(e.raw, raw, binding_count * 6 * sizeof(uint32_t)) == 0;
+      int miss = valid ? -1 : 3;
       if (valid && !same_frame) {
-        valid = REXCVAR_GET(carbon_gpu_texture_bind_carry) && e.info_count == descriptor_count &&
-                e.gen == texture_bind_gen_ &&
-                e.aniso == float(REXCVAR_GET(carbon_gpu_max_anisotropy));
+        if (e.gen != texture_bind_gen_) {
+          valid = false;
+          miss = 1;
+        } else if (!REXCVAR_GET(carbon_gpu_texture_bind_carry) || e.info_count != descriptor_count ||
+                   e.aniso != float(REXCVAR_GET(carbon_gpu_max_anisotropy))) {
+          valid = false;
+          miss = 2;
+        }
       }
       for (uint32_t i = 0; valid && i < binding_count; ++i) {
         Texture* t = e.slots[i].texture;
@@ -727,6 +735,7 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
         // sizes): a resolve into another one can change which of them the lookup picks.
         if (valid && e.slots[i].resolved_base) {
           valid = FindResolvedTexture(e.slots[i].resolved_base, 0, 0) == t;
+          if (!valid) miss = 4;
         }
         if (valid && !same_frame) {
           // What GetTexture does for a texture it finds (may re-upload a changed one).
@@ -740,8 +749,14 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
             t->has_unsampled = false;
           }
         }
-        valid = valid && t->layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        if (valid && t->layout != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+          valid = false;
+          miss = 5;
+        }
+        if (!valid && miss < 0) miss = 6;
       }
+      if (!valid && same_frame && miss != 3) miss = 6;
+      if (!valid && miss >= 0) ++stats_.carry_miss[miss];
       if (valid && !same_frame) {
         carried = found;
       } else if (valid) {
@@ -1045,6 +1060,7 @@ void Renderer::EvictResources() {
       }
     }
     ++texture_bind_gen_;  // carried binds may point at it
+    ++stats_.bind_gen_bumps;
     ++stats_.evicted;
   }
   (void)dfn;

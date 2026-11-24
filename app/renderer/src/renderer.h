@@ -684,6 +684,11 @@ class Renderer {
     // Float constant uploads: by packed shaders, by relatively addressed ones (whole 4 KiB), and
     // the bytes the packed ones saved against uploading registers 0..highest read.
     uint32_t tex_binds_reused = 0, tex_binds_carried = 0, tex_binds_built = 0;
+    // Why a built bind was not carried: 0 no entry, 1 entry of another frame but generation,
+    // 2 not kept (cube / many descriptors / anisotropy), 3 shader or fetch constants differ,
+    // 4 resolved lookup changed, 5 layout not read-only, 6 same-frame entry not valid.
+    uint32_t carry_miss[7] = {};
+    uint32_t bind_gen_bumps = 0;
     // Bytes hashed to find changed guest data: vertex pages (static, sparse samples, dynamic),
     // vertex buffers uploaded per draw, textures.
     uint64_t hash_bytes[5] = {};

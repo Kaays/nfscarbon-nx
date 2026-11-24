@@ -3524,6 +3524,13 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
                   "earlier frame, {:.0f} built",
                   stats_.tex_binds_reused / frames, stats_.tex_binds_carried / frames,
                   stats_.tex_binds_built / frames);
+      REXGPU_INFO("[carbon-gpu] texture binds not carried per frame: no entry {:.0f}, generation "
+                  "{:.0f} ({} bumps in the interval), not kept {:.0f}, other constants {:.0f}, "
+                  "resolved lookup {:.0f}, layout {:.0f}, same frame {:.0f}",
+                  stats_.carry_miss[0] / frames, stats_.carry_miss[1] / frames,
+                  stats_.bind_gen_bumps, stats_.carry_miss[2] / frames,
+                  stats_.carry_miss[3] / frames, stats_.carry_miss[4] / frames,
+                  stats_.carry_miss[5] / frames, stats_.carry_miss[6] / frames);
       {
         const double mib = 1.0 / frames / (1024.0 * 1024.0);
         REXGPU_INFO("[carbon-gpu] hashed MiB per frame: vertex pages {:.2f} full + {:.2f} sparse, "
