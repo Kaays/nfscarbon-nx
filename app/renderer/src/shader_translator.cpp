@@ -1140,11 +1140,14 @@ TranslatedShader Translator::Run() {
 }
 
 // Helpers shared by both stages.
+// xe_mul / xe_mul1: the Xenos rule 0 * anything = 0 (also for infinity and NaN). Written as
+// "min(|a|, |b|) == 0 ? 0 : a * b", the open-coded form NIR's algebraic pass turns into one fmulz
+// (NAK: a single FMUL.FMZ) instead of compares, conversions and a select per component. Same
+// result as before for every input (a NaN operand only matters when the other is not zero).
 const char* kCommonHelpers = R"(
-float xe_mul1(float a, float b) { return (a == 0.0 || b == 0.0) ? 0.0 : a * b; }
+float xe_mul1(float a, float b) { return min(abs(a), abs(b)) == 0.0 ? 0.0 : a * b; }
 vec4 xe_mul(vec4 a, vec4 b) {
-  bvec4 z = bvec4(vec4(equal(a, vec4(0.0))) + vec4(equal(b, vec4(0.0))));
-  return mix(a * b, vec4(0.0), z);
+  return mix(a * b, vec4(0.0), equal(min(abs(a), abs(b)), vec4(0.0)));
 }
 float xe_dot4(vec4 a, vec4 b) { vec4 m = xe_mul(a, b); return ((m.x + m.y) + m.z) + m.w; }
 float xe_dot3(vec3 a, vec3 b) { vec4 m = xe_mul(vec4(a, 0.0), vec4(b, 0.0)); return (m.x + m.y) + m.z; }
