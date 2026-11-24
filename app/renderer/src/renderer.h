@@ -443,12 +443,19 @@ class Renderer {
     uint64_t ps_hash = 0, vs_hash = 0;
     uint8_t colors = 0;
     bool depth = false;
+    // Union of the draws' scissors (pixels of the pass) and the targets, to see what each pass of a
+    // type covers (predicated tiling: one scene in screen strips).
+    int32_t box[4] = {0, 0, 0, 0};
+    uint32_t color_id = 0, depth_id = 0;
+    float ms = 0.0f;
   };
   struct PassAgg {
     StampInfo info;
     double seconds = 0;
     uint32_t count = 0;
     uint64_t draws = 0;
+    std::vector<StampInfo> last_frame;  // the passes of this type in the last frame read
+    uint64_t last_frame_no = 0;
   };
   void GpuStamp(GpuTag tag, const StampInfo* info = nullptr);
   StampInfo ts_info_[kFramesInFlight][kMaxStamps];
@@ -462,6 +469,8 @@ class Renderer {
   };
   std::unordered_map<uint64_t, PostCensus> post_census_;
   uint32_t pass_draws_ = 0;
+  int32_t pass_box_[4] = {0, 0, 0, 0};
+  bool pass_box_valid_ = false;
   uint32_t debug_mode_ = 0;
   float max_anisotropy_ = 16.0f;
   // Render resolution scale: host pixels per guest pixel for render targets and

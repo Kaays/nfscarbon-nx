@@ -1039,7 +1039,11 @@ void Renderer::EndRendering() {
       if (!info.format) info.format = uint32_t(current_pass_.color[i]->format);
     }
   }
+  if (pass_box_valid_) std::copy(pass_box_, pass_box_ + 4, info.box);
+  info.color_id = current_pass_.color[0] ? uint32_t(current_pass_.color[0]->edram_base) : 0xFFFF;
+  info.depth_id = current_pass_.depth ? uint32_t(current_pass_.depth->edram_base) : 0xFFFF;
   pass_draws_ = 0;
+  pass_box_valid_ = false;
   GpuStamp(current_pass_.depth ? kTagScenePass : kTagOtherPass, &info);
   rendering_ = false;
   current_pass_ = PassState();
@@ -1089,6 +1093,14 @@ void Renderer::ReadGpuStamps(uint32_t slot) {
         a.seconds += dt;
         a.draws += si.draws;
         ++a.count;
+        if (a.last_frame_no != stats_.gpu_frames) {
+          a.last_frame_no = stats_.gpu_frames;
+          a.last_frame.clear();
+        }
+        if (a.last_frame.size() < 8) {
+          a.last_frame.push_back(si);
+          a.last_frame.back().ms = float(dt * 1000.0);
+        }
       }
     }
     stats_.gpu_passes += ts_tag_[slot][i] == kTagScenePass || ts_tag_[slot][i] == kTagOtherPass;
@@ -2571,6 +2583,17 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
     Skip(kSkipScissor);
     return;
   }
+  {
+    const int32_t x0 = scissor.offset.x, y0 = scissor.offset.y;
+    const int32_t x1 = x0 + int32_t(scissor.extent.width), y1 = y0 + int32_t(scissor.extent.height);
+    if (!pass_box_valid_) {
+      pass_box_[0] = x0, pass_box_[1] = y0, pass_box_[2] = x1, pass_box_[3] = y1;
+      pass_box_valid_ = true;
+    } else {
+      pass_box_[0] = std::min(pass_box_[0], x0), pass_box_[1] = std::min(pass_box_[1], y0);
+      pass_box_[2] = std::max(pass_box_[2], x1), pass_box_[3] = std::max(pass_box_[3], y1);
+    }
+  }
 
   // Estimate the upload size so the draw fits in one chunk.
   VkDeviceSize estimate = 4096 * 2 + sizeof(DrawConstants) + 3 * 256;
@@ -3571,6 +3594,15 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
               a.info.width, a.info.height, a.info.format, a.info.colors, a.info.depth,
               a.count / gf, a.draws / gf, a.seconds * 1000.0 / gf, a.seconds * 1000.0 / a.count,
               a.info.ps_hash, a.info.vs_hash);
+          if (a.info.depth && a.last_frame.size() > 1) {
+            std::string list;
+            for (const StampInfo& p : a.last_frame) {
+              list += fmt::format(" [{},{}-{},{} {} draws {:.2f} ms edram color {} depth {}]",
+                                  p.box[0], p.box[1], p.box[2], p.box[3], p.draws, p.ms,
+                                  p.color_id, p.depth_id);
+            }
+            REXGPU_INFO("[carbon-gpu]     its passes in the last frame (scissor union):{}", list);
+          }
         }
         pass_agg_.clear();
         double g = double(stats_.gpu_frames);
