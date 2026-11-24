@@ -534,7 +534,7 @@ class Renderer {
     uint32_t info_count = 0;
     VkDescriptorImageInfo infos[kBindInfoMax];
   };
-  static constexpr uint32_t kBindCacheSize = 4096;  // power of two
+  static constexpr uint32_t kBindCacheSize = 8192;  // power of two; Race Wars starts build 3,000+ a frame
   std::vector<TextureBindEntry> texture_bind_cache_;  // empty unless epoch == texture_bind_epoch_
   uint64_t texture_bind_epoch_ = 1;
   uint64_t texture_bind_gen_ = 1;  // bumped when a resolved texture is created or textures are evicted

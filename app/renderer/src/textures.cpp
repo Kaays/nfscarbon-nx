@@ -719,7 +719,10 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
       for (uint32_t i = 0; valid && i < binding_count; ++i) {
         Texture* t = e.slots[i].texture;
         if (!t) continue;
-        valid = t->resolve_gen == e.slots[i].gen;
+        // Same frame: not resolved into since. An earlier frame: a resolved texture is resolved
+        // into every frame (shadow maps, reflections); the image, its views and the lookup are
+        // what matter, so the generation is not compared, the lookup below is.
+        valid = !same_frame || t->resolve_gen == e.slots[i].gen;
         // Several resolved textures can share an address (the shadow maps at one base, three
         // sizes): a resolve into another one can change which of them the lookup picks.
         if (valid && e.slots[i].resolved_base) {
@@ -974,7 +977,6 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
 void Renderer::EvictResources() {
   const auto& dfn = vulkan_device_->functions();
   ++texture_bind_epoch_;
-  ++texture_bind_gen_;
   ++set_cache_stamp_;
   cube_lookups_.clear();
   ++resolve_epoch_;
@@ -1042,6 +1044,7 @@ void Renderer::EvictResources() {
         break;
       }
     }
+    ++texture_bind_gen_;  // carried binds may point at it
     ++stats_.evicted;
   }
   (void)dfn;
