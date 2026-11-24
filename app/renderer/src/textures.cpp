@@ -16,7 +16,7 @@
 
 REXCVAR_DECLARE(int32_t, carbon_gpu_max_anisotropy);
 
-REXCVAR_DEFINE_BOOL(carbon_gpu_texture_bind_diag, true, "CarbonGPU",
+REXCVAR_DEFINE_BOOL(carbon_gpu_texture_bind_diag, false, "CarbonGPU",
                     "Measurement: for texture binds not found from earlier frames, find which "
                     "fetch constant dword changed (costs some CPU)");
 REXCVAR_DEFINE_BOOL(carbon_gpu_texture_bind_carry, true, "CarbonGPU",
@@ -957,14 +957,20 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
                                  descriptor_count);
   auto remember = [&](VkDescriptorSet set) {
     if (!cacheable || !set || slot_count != binding_count) return;
-    // The key's slot, the first empty one after it, or (table crowded) the first probed.
-    TextureBindEntry* slot = &texture_bind_cache_[bind_key & (kBindCacheSize - 1)];
+    // The key's own slot, else the oldest of the probed slots (never used ones first). Entries
+    // of the previous frame are what the carry needs, so they are not taken while an older or an
+    // empty slot is there: taking the first one of another frame overwrote most of them before
+    // their draws came round (Race Wars start: 2,000+ binds a frame found nothing, although the
+    // same fetch constants had been bound the frame before).
+    TextureBindEntry* slot = nullptr;
     for (uint32_t probe = 0; probe < kCacheProbes; ++probe) {
       TextureBindEntry& c2 = texture_bind_cache_[(bind_key + probe) & (kBindCacheSize - 1)];
-      if (c2.epoch != texture_bind_epoch_ || c2.key == bind_key) {
+      if (c2.key == bind_key && c2.epoch) {
         slot = &c2;
         break;
       }
+      if (!slot || c2.epoch < slot->epoch) slot = &c2;
+      if (!c2.epoch) break;  // never used: nothing of this key further on
     }
     TextureBindEntry& e = *slot;
     e.key = bind_key;
