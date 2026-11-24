@@ -126,6 +126,9 @@ REXCVAR_DEFINE_INT32(carbon_gpu_render_scale, 100, "CarbonGPU",
     .range(25, 200);
 REXCVAR_DEFINE_BOOL(carbon_gpu_debug_cycle, false, "CarbonGPU",
                     "Debug: every 10 s cycle between normal, skipping small post passes, skipping the main scene, and both");
+REXCVAR_DEFINE_BOOL(carbon_gpu_ps_timing, true, "CarbonGPU",
+                    "Measurement: GPU time per pixel shader in the big scene passes, one frame in 30 "
+                    "(logged with the pass statistics)");
 REXCVAR_DEFINE_BOOL(carbon_gpu_draw_profile, true, "CarbonGPU",
                     "Log where the renderer thread spends its draw time (state, pipeline, textures, "
                     "indices, vertices, constants, recording) and upload bytes by kind");
@@ -535,6 +538,10 @@ bool Renderer::Initialize(GpuSystem* system, rex::ui::vulkan::VulkanProvider* pr
         if (dfn.vkCreateQueryPool(vk_device_, &qci, nullptr, &ts_pool_[i]) != VK_SUCCESS) {
           ts_pool_[i] = VK_NULL_HANDLE;
         }
+        qci.queryCount = kPsStamps;
+        if (dfn.vkCreateQueryPool(vk_device_, &qci, nullptr, &ps_pool_[i]) != VK_SUCCESS) {
+          ps_pool_[i] = VK_NULL_HANDLE;
+        }
       }
     }
   }
@@ -768,6 +775,7 @@ bool Renderer::BeginFrame() {
     dfn.vkResetFences(vk_device_, 1, &f.fence);
     f.submitted = false;
     ReadGpuStamps(frame_index_);
+    ReadPsStamps(frame_index_);
   }
   if (arena_reset_pending_) {
     // The arena is full: wait until no frame in flight reads it, then start over.
@@ -807,6 +815,13 @@ bool Renderer::BeginFrame() {
   if (ts_pool_[frame_index_]) {
     dfn.vkCmdResetQueryPool(f.cb, ts_pool_[frame_index_], 0, kMaxStamps);
     GpuStamp(kTagStart);
+  }
+  ps_count_[frame_index_] = 0;
+  ps_open_ = false;
+  ps_active_[frame_index_] = ps_pool_[frame_index_] && REXCVAR_GET(carbon_gpu_ps_timing) &&
+                             frame_number_ % 30 == 0;
+  if (ps_active_[frame_index_]) {
+    dfn.vkCmdResetQueryPool(f.cb, ps_pool_[frame_index_], 0, kPsStamps);
   }
   f.number = frame_number_;
   frame_open_ = true;
@@ -1025,6 +1040,10 @@ void Renderer::EndRendering() {
   if (!rendering_) {
     return;
   }
+  if (ps_open_) {
+    PsStamp(0);  // closes the last shader's span
+    ps_open_ = false;
+  }
   vulkan_device_->functions().vkCmdEndRendering(frame().cb);
   StampInfo info;
   info.width = current_pass_.width;
@@ -1059,6 +1078,35 @@ void Renderer::GpuStamp(GpuTag tag, const StampInfo* info) {
   ts_tag_[frame_index_][n] = tag;
   ts_info_[frame_index_][n] = info ? *info : StampInfo();
   ++n;
+}
+
+void Renderer::PsStamp(uint64_t hash) {
+  uint32_t& n = ps_count_[frame_index_];
+  if (n >= kPsStamps) return;
+  pfn_write_timestamp_(frame().cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, ps_pool_[frame_index_], n);
+  ps_stamp_hash_[frame_index_][n] = hash;
+  ps_stamp_draws_[frame_index_][n] = 0;
+  ++n;
+}
+
+void Renderer::ReadPsStamps(uint32_t slot) {
+  const uint32_t n = ps_count_[slot];
+  if (!ps_active_[slot] || n < 2) return;
+  ps_active_[slot] = false;
+  uint64_t results[kPsStamps];
+  if (pfn_get_query_results_(vk_device_, ps_pool_[slot], 0, n, sizeof(uint64_t) * n, results,
+                             sizeof(uint64_t), VK_QUERY_RESULT_64_BIT) != VK_SUCCESS) {
+    return;
+  }
+  for (uint32_t i = 0; i + 1 < n; ++i) {
+    if (!ps_stamp_hash_[slot][i]) continue;
+    const double dt = double(results[i + 1] - results[i]) * ts_period_ns_ * 1e-9;
+    if (dt <= 0.0 || dt > 1.0) continue;
+    PsTime& p = ps_time_[ps_stamp_hash_[slot][i]];
+    p.seconds += dt;
+    p.draws += ps_stamp_draws_[slot][i];
+  }
+  ++ps_frames_;
 }
 
 void Renderer::ReadGpuStamps(uint32_t slot) {
@@ -2919,6 +2967,15 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
   if (current_pass_.depth) current_pass_.depth->write_gen = ++rt_write_counter_;
   pass_ps_hash_ = ps ? ps->hash : 0;
   pass_vs_hash_ = vs->hash;
+  if (ps_active_[frame_index_] && current_pass_.depth && current_pass_.width >= 1024) {
+    const uint64_t h = pass_ps_hash_ ? pass_ps_hash_ : 1;  // 1 = depth only
+    if (!ps_open_ || h != ps_current_hash_) {
+      PsStamp(h);
+      ps_open_ = true;
+      ps_current_hash_ = h;
+    }
+    if (ps_count_[frame_index_]) ++ps_stamp_draws_[frame_index_][ps_count_[frame_index_] - 1];
+  }
   VkPipelineLayout layout = GetPipelineLayout(key.vs_textures, key.ps_textures);
   VkDescriptorSet set0 = upload_chunks_[current_chunk_].set0;
   dfn.vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &set0, 3,
@@ -3579,6 +3636,24 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
             stats_.upload_kind_bytes[0] * mib, stats_.upload_kind_bytes[1] * mib,
             stats_.upload_kind_bytes[2] * mib, stats_.upload_kind_bytes[3] * mib,
             stats_.upload_kind_bytes[4] * mib, stats_.submit_s * ms, stats_.present_s * ms, stats_.cap_sleep_s * ms);
+      }
+      if (ps_frames_) {
+        std::vector<std::pair<uint64_t, PsTime>> top(ps_time_.begin(), ps_time_.end());
+        std::sort(top.begin(), top.end(),
+                  [](const auto& a, const auto& b) { return a.second.seconds > b.second.seconds; });
+        double total = 0;
+        for (const auto& kv : top) total += kv.second.seconds;
+        std::string list;
+        for (size_t i = 0; i < top.size() && i < 12; ++i) {
+          list += fmt::format(" [{:016X} {:.2f} ms {:.0f} draws]", top[i].first,
+                              top[i].second.seconds * 1000.0 / ps_frames_,
+                              double(top[i].second.draws) / ps_frames_);
+        }
+        REXGPU_INFO("[carbon-gpu] big scene passes by pixel shader ({} frames sampled, {:.2f} ms "
+                    "per frame in all, {} shaders):{}",
+                    ps_frames_, total * 1000.0 / ps_frames_, top.size(), list);
+        ps_time_.clear();
+        ps_frames_ = 0;
       }
       if (stats_.gpu_frames) {
         std::vector<const PassAgg*> top;

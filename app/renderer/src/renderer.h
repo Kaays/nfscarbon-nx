@@ -588,6 +588,24 @@ class Renderer {
   uint32_t frame_textures_ = 0, frame_pipeline_builds_ = 0, spike_reports_ = 0;
   void ReadGpuStamps(uint32_t slot);
   VkQueryPool ts_pool_[kFramesInFlight] = {};
+  // carbon_gpu_ps_timing: GPU time per pixel shader inside the big scene passes (1024+ wide, with
+  // depth), one frame in 30: a timestamp wherever the pixel shader changes.
+  static constexpr uint32_t kPsStamps = 512;
+  VkQueryPool ps_pool_[kFramesInFlight] = {};
+  uint32_t ps_count_[kFramesInFlight] = {};
+  bool ps_active_[kFramesInFlight] = {};
+  uint64_t ps_stamp_hash_[kFramesInFlight][kPsStamps] = {};  // shader from stamp i to i + 1
+  uint32_t ps_stamp_draws_[kFramesInFlight][kPsStamps] = {};
+  uint64_t ps_current_hash_ = 0;
+  bool ps_open_ = false;
+  struct PsTime {
+    double seconds = 0;
+    uint64_t draws = 0;
+  };
+  std::unordered_map<uint64_t, PsTime> ps_time_;
+  uint32_t ps_frames_ = 0;
+  void PsStamp(uint64_t hash);
+  void ReadPsStamps(uint32_t slot);
   uint32_t ts_count_[kFramesInFlight] = {};
   uint8_t ts_tag_[kFramesInFlight][kMaxStamps] = {};
   bool ts_valid_[kFramesInFlight] = {};
