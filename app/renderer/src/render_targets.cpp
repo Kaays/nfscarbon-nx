@@ -14,6 +14,17 @@
 #include "renderer.h"
 #include "shader_compiler.h"
 
+#include <rex/cvar.h>
+
+// NVK gives a depth image a ZCULL plane (coarse rejection of hidden pixels before shading) only
+// when its usage is depth attachment plus reads; TRANSFER_DST disqualifies it ("[nvk] ZCULL: SIN
+// plano ... usos incompatibles" in rex_stderr.log). Depth targets asked for TRANSFER_DST only for
+// the copy of their old contents when they grow, which happens a few times after loading. At 720p
+// the first 1280x720 scene pass of a Race Wars frame takes 15-24 ms of GPU.
+REXCVAR_DEFINE_BOOL(carbon_gpu_depth_zcull, true, "CarbonGPU",
+                    "Depth render targets without TRANSFER_DST so NVK can use ZCULL on them; a "
+                    "depth target that grows then starts empty instead of keeping its contents");
+
 namespace carbon::gpu {
 
 namespace {
@@ -129,9 +140,10 @@ bool Renderer::CreateRenderTargetImage(RenderTarget& rt, uint32_t logical_width,
   ici.samples = VK_SAMPLE_COUNT_1_BIT;
   ici.tiling = VK_IMAGE_TILING_OPTIMAL;
   ici.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-              VK_IMAGE_USAGE_TRANSFER_DST_BIT |
               (rt.is_depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
                            : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+  rt.transfer_dst = !rt.is_depth || !REXCVAR_GET(carbon_gpu_depth_zcull);
+  if (rt.transfer_dst) ici.usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
   VkFormat raw_format = rt.format;
   VmaAllocationCreateInfo aci = {};
   aci.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
@@ -235,7 +247,11 @@ RenderTarget* Renderer::GetRenderTarget(bool depth, uint32_t edram_base, uint32_
   VkImageAspectFlags aspect =
       depth ? VkImageAspectFlags(VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)
             : VkImageAspectFlags(VK_IMAGE_ASPECT_COLOR_BIT);
-  if (old.layout != VK_IMAGE_LAYOUT_UNDEFINED && pfn_copy_image_) {
+  if (!rt->transfer_dst) {
+    // carbon_gpu_depth_zcull: the new image cannot be a copy destination.
+    REXGPU_INFO("[carbon-gpu] depth target base {} grew to {}x{}: starts empty (ZCULL)",
+                rt->edram_base, rt->width, rt->height);
+  } else if (old.layout != VK_IMAGE_LAYOUT_UNDEFINED && pfn_copy_image_) {
     TransitionImage(cb, old.image, aspect, old.layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     TransitionImage(cb, rt->image, aspect, rt->layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     VkImageCopy region = {};

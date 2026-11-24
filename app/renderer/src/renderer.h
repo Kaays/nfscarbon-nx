@@ -73,6 +73,7 @@ struct RenderTarget {
   uint32_t pitch = 0;       // pixels
   uint32_t guest_format = 0;
   bool is_depth = false;
+  bool transfer_dst = true;  // can be a copy destination (not for depth with carbon_gpu_depth_zcull)
   // Unique stamp (from Renderer::rt_write_counter_) of the last change to the
   // contents: a recorded draw, a clear, or creation. Stamps are never reused, so
   // a recreated target at the same address cannot match an older resolve.
