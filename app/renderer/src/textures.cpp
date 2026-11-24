@@ -16,6 +16,10 @@
 
 REXCVAR_DECLARE(int32_t, carbon_gpu_max_anisotropy);
 
+REXCVAR_DEFINE_BOOL(carbon_gpu_texture_bind_carry, true, "CarbonGPU",
+                    "Reuse a draw's texture lookups (textures, views, samplers) from an earlier "
+                    "frame when its shader and fetch constants are the same; only the descriptor "
+                    "set is written again");
 REXCVAR_DEFINE_BOOL(carbon_gpu_cube_from_faces, true, "CarbonGPU",
                     "Car reflection cube put together from the faces the game draws (false: the "
                     "paint reflects only the disc's static cube, as before v0.4.7)");
@@ -330,6 +334,7 @@ Texture* Renderer::GetOrCreateResolveTexture(uint32_t base_address, uint32_t wid
   resolved_textures_.push_back(raw);
   // A resolved texture takes priority over memory ones at its address (GetTexture).
   ++texture_bind_epoch_;
+  ++texture_bind_gen_;
   ++resolve_epoch_;
   return raw;
 }
@@ -535,23 +540,29 @@ Texture* Renderer::GetTexture(const GuestTexture& guest, bool allow_upload) {
     UploadTexture(*created);
     t = created.get();
     textures_.emplace(key, std::move(created));
-  } else if (frame_number_ - t->last_hash_frame >= t->hash_interval &&
-             t->last_used_frame != frame_number_) {
-    // Re-check the guest memory: textures that stay the same are checked
-    // less and less often.
-    uint64_t hash = HashExtent(physical_base_, t->extent);
-    stats_.hash_bytes[4] += t->extent.base_size + t->extent.mip_size;
-    t->last_hash_frame = frame_number_;
-    if (hash != t->content_hash) {
-      t->content_hash = hash;
-      t->hash_interval = 1;
-      UploadTexture(*t);
-    } else {
-      t->hash_interval = std::min(t->hash_interval * 2, kMaxHashInterval);
-    }
+  } else {
+    RecheckTexture(*t);
   }
   t->last_used_frame = frame_number_;
   return t;
+}
+
+void Renderer::RecheckTexture(Texture& t) {
+  if (frame_number_ - t.last_hash_frame >= t.hash_interval && t.last_used_frame != frame_number_) {
+    // Re-check the guest memory: textures that stay the same are checked
+    // less and less often.
+    uint64_t hash = HashExtent(physical_base_, t.extent);
+    stats_.hash_bytes[4] += t.extent.base_size + t.extent.mip_size;
+    t.last_hash_frame = frame_number_;
+    if (hash != t.content_hash) {
+      t.content_hash = hash;
+      t.hash_interval = 1;
+      UploadTexture(t);
+    } else {
+      t.hash_interval = std::min(t.hash_interval * 2, kMaxHashInterval);
+    }
+  }
+  t.last_used_frame = frame_number_;
 }
 
 VkImageView Renderer::GetTextureView(Texture& t, uint32_t swizzle, bool use_signed,
@@ -673,6 +684,7 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
   // Same shader and same fetch constants as a draw earlier in the frame: replay its result.
   const uint32_t binding_count = uint32_t(ts.textures.size());
   bool cacheable = !tracing_ && binding_count <= kBindCacheMax;
+  const TextureBindEntry* carried = nullptr;  // lookups from an earlier frame still valid
   uint32_t raw[kBindCacheMax * 6];
   uint64_t bind_key = 0;
   if (cacheable) {
@@ -686,7 +698,7 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
     const TextureBindEntry* found = nullptr;
     for (uint32_t probe = 0; probe < kCacheProbes; ++probe) {
       const TextureBindEntry& e = texture_bind_cache_[(bind_key + probe) & (kBindCacheSize - 1)];
-      if (e.epoch != texture_bind_epoch_) break;  // empty: not in the table
+      if (!e.epoch) break;  // never used: not in the table
       if (e.key == bind_key) {
         found = &e;
         break;
@@ -694,20 +706,42 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
     }
     if (found) {
       const TextureBindEntry& e = *found;
-      bool valid = e.shader == shader && e.epoch == texture_bind_epoch_ &&
-                   e.count == binding_count &&
+      // Same frame: the whole result, descriptor set included. An earlier frame: the lookups only,
+      // while no texture was created as resolved or evicted since (Texture pointers, views).
+      const bool same_frame = e.epoch == texture_bind_epoch_;
+      bool valid = e.shader == shader && e.count == binding_count &&
                    std::memcmp(e.raw, raw, binding_count * 6 * sizeof(uint32_t)) == 0;
+      if (valid && !same_frame) {
+        valid = REXCVAR_GET(carbon_gpu_texture_bind_carry) && e.info_count == descriptor_count &&
+                e.gen == texture_bind_gen_ &&
+                e.aniso == float(REXCVAR_GET(carbon_gpu_max_anisotropy));
+      }
       for (uint32_t i = 0; valid && i < binding_count; ++i) {
-        const Texture* t = e.slots[i].texture;
-        valid = !t || (t->resolve_gen == e.slots[i].gen &&
-                       t->layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        Texture* t = e.slots[i].texture;
+        if (!t) continue;
+        valid = t->resolve_gen == e.slots[i].gen;
         // Several resolved textures can share an address (the shadow maps at one base, three
         // sizes): a resolve into another one can change which of them the lookup picks.
         if (valid && e.slots[i].resolved_base) {
           valid = FindResolvedTexture(e.slots[i].resolved_base, 0, 0) == t;
         }
+        if (valid && !same_frame) {
+          // What GetTexture does for a texture it finds (may re-upload a changed one).
+          if (t->resolved) {
+            t->last_used_frame = frame_number_;
+          } else {
+            RecheckTexture(*t);
+          }
+          if (t->has_unsampled) {
+            for (ResolveSig& sig : t->resolve_sigs) sig.sampled = true;
+            t->has_unsampled = false;
+          }
+        }
+        valid = valid && t->layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
       }
-      if (valid) {
+      if (valid && !same_frame) {
+        carried = found;
+      } else if (valid) {
         for (uint32_t i = 0; i < binding_count; ++i) {
           const TextureBindEntry::Slot& s = e.slots[i];
           const uint32_t fi = s.fi;
@@ -724,17 +758,37 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
       }
     }
   }
-  ++stats_.tex_binds_built;
   TextureBindEntry::Slot slots[kBindCacheMax];
   uint32_t slot_count = 0;
+  bool carry = descriptor_count <= kBindInfoMax;  // keep the infos for later frames
 
   VkDescriptorImageInfo infos[kMaxDescriptors];
+  if (carried) {
+    ++stats_.tex_binds_carried;
+    const TextureBindEntry& e = *carried;
+    for (uint32_t i = 0; i < binding_count; ++i) {
+      const TextureBindEntry::Slot& s = e.slots[i];
+      const uint32_t fi = s.fi;
+      c.tex_info[fi * 4 + 0] = s.info[0];
+      c.tex_info[fi * 4 + 1] = s.info[1];
+      c.tex_info[fi * 4 + 2] = s.info[2];
+      std::memcpy(&c.tex_size[fi * 4], s.size, sizeof(s.size));
+      c.tex_uv[fi * 4 + 0] = s.uv[0];
+      c.tex_uv[fi * 4 + 1] = s.uv[1];
+      slots[i] = s;
+    }
+    slot_count = binding_count;
+    std::memcpy(infos, e.infos, sizeof(VkDescriptorImageInfo) * descriptor_count);
+  } else {
+  ++stats_.tex_binds_built;
   std::memset(infos, 0, sizeof(VkDescriptorImageInfo) * descriptor_count);
   for (const TextureBinding& b : ts.textures) {
     xenos::xe_gpu_texture_fetch_t fetch = regs.GetTextureFetch(b.fetch_index);
     GuestTexture g;
     Texture* t = nullptr;
     if (GuestTextureFromFetch(fetch, g)) {
+      // Cubes may be put together from resolved faces from one frame to the next.
+      if (g.dimension == xenos::DataDimension::kCube) carry = false;
       t = GetTexture(g, true);
       // Not kept: a failed texture (retried next draw) and cubes put together from resolved
       // faces (GetCubeFromResolvedFaces re-copies the faces when they change).
@@ -848,6 +902,7 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
         break;
     }
   }
+  }  // built
   for (uint32_t i = 0; i < descriptor_count; ++i) {
     if (!infos[i].imageView) {
       infos[i] = {point_sampler_, null_2d_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
@@ -874,7 +929,11 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
     e.set = set;
     e.count = binding_count;
     std::memcpy(e.raw, raw, binding_count * 6 * sizeof(uint32_t));
-    std::copy(slots, slots + slot_count, e.slots);
+    if (slots != e.slots) std::copy(slots, slots + slot_count, e.slots);
+    e.gen = texture_bind_gen_;
+    e.aniso = float(REXCVAR_GET(carbon_gpu_max_anisotropy));
+    e.info_count = carry ? descriptor_count : 0;
+    if (carry) std::memcpy(e.infos, infos, sizeof(VkDescriptorImageInfo) * descriptor_count);
   };
   if (set_cache_.empty()) set_cache_.resize(kSetCacheSize);
   SetCacheSlot* set_slot = &set_cache_[cache_key & (kSetCacheSize - 1)];
@@ -915,6 +974,7 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
 void Renderer::EvictResources() {
   const auto& dfn = vulkan_device_->functions();
   ++texture_bind_epoch_;
+  ++texture_bind_gen_;
   ++set_cache_stamp_;
   cube_lookups_.clear();
   ++resolve_epoch_;

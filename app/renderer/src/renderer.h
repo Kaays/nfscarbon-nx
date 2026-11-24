@@ -250,6 +250,9 @@ class Renderer {
 
   // ---- Textures (textures.cpp) ----
   Texture* GetTexture(const GuestTexture& guest, bool allow_upload);
+  // GetTexture's per-use work for a memory texture already found: the periodic re-check of its
+  // guest memory (re-uploaded if it changed) and last_used_frame.
+  void RecheckTexture(Texture& t);
   Texture* FindResolvedTexture(uint32_t base_address, uint32_t width, uint32_t height);
   // `y_offset` receives the first row of the resolve in the returned texture
   // (non-zero for tiles resolved into a texture that starts above them).
@@ -506,6 +509,7 @@ class Renderer {
   // material) skips the texture, sampler and view lookups. Valid while the textures it used have
   // not been resolved into again (resolve_gen) and no resolved texture appeared (epoch).
   static constexpr uint32_t kBindCacheMax = 8;
+  static constexpr uint32_t kBindInfoMax = 16;
   struct TextureBindEntry {
     uint64_t key = 0;
     const Shader* shader = nullptr;
@@ -522,10 +526,18 @@ class Renderer {
       uint64_t gen;
       uint32_t resolved_base;  // a resolved texture found by address: still the one found
     } slots[kBindCacheMax];
+    // For a later frame (the descriptor set itself is per frame): the image infos, valid while
+    // no texture was created as resolved or evicted (texture_bind_gen_) and the anisotropy cap is
+    // the same. info_count 0 = not kept (cubes, or more than kBindInfoMax descriptors).
+    uint64_t gen = 0;
+    float aniso = 0.0f;
+    uint32_t info_count = 0;
+    VkDescriptorImageInfo infos[kBindInfoMax];
   };
   static constexpr uint32_t kBindCacheSize = 4096;  // power of two
   std::vector<TextureBindEntry> texture_bind_cache_;  // empty unless epoch == texture_bind_epoch_
   uint64_t texture_bind_epoch_ = 1;
+  uint64_t texture_bind_gen_ = 1;  // bumped when a resolved texture is created or textures are evicted
   std::vector<uint32_t> scratch_indices_;
   // Fused index conversion for plain indexed draws: converts into the upload
   // buffer and returns the range of vertex indices used.
@@ -671,7 +683,7 @@ class Renderer {
     uint64_t upload_kind_bytes[5] = {};
     // Float constant uploads: by packed shaders, by relatively addressed ones (whole 4 KiB), and
     // the bytes the packed ones saved against uploading registers 0..highest read.
-    uint32_t tex_binds_reused = 0, tex_binds_built = 0;
+    uint32_t tex_binds_reused = 0, tex_binds_carried = 0, tex_binds_built = 0;
     // Bytes hashed to find changed guest data: vertex pages (static, sparse samples, dynamic),
     // vertex buffers uploaded per draw, textures.
     uint64_t hash_bytes[5] = {};

@@ -3520,8 +3520,10 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
           "addressing), {:.2f} MiB saved by packing",
           stats_.const_uploads_packed / frames, stats_.const_uploads_full / frames,
           double(stats_.const_bytes_saved) / frames / (1024.0 * 1024.0));
-      REXGPU_INFO("[carbon-gpu] texture binds per frame: {:.0f} reused, {:.0f} built",
-                  stats_.tex_binds_reused / frames, stats_.tex_binds_built / frames);
+      REXGPU_INFO("[carbon-gpu] texture binds per frame: {:.0f} reused, {:.0f} carried from an "
+                  "earlier frame, {:.0f} built",
+                  stats_.tex_binds_reused / frames, stats_.tex_binds_carried / frames,
+                  stats_.tex_binds_built / frames);
       {
         const double mib = 1.0 / frames / (1024.0 * 1024.0);
         REXGPU_INFO("[carbon-gpu] hashed MiB per frame: vertex pages {:.2f} full + {:.2f} sparse, "
