@@ -68,12 +68,16 @@ REXCVAR_DEFINE_INT32(nfscarbon_handoff_priority, 0x3A, "Carbon",
                      "like the rest of the game")
     .range(0, 0x3B)
     .lifecycle(rex::cvar::Lifecycle::kInitOnly);
-// Test switches, off by default. At 480p/600p the preparer (the game's simulation thread) is the
+// At 480p/600p the preparer (the game's simulation thread) is the
 // limit: 85-91 % of a core and almost never asleep, while the audio mixer (0x2A), the GPU command
 // thread and the recorder (0x2C) preempt it whenever they land on its core. Pinning it to a core of
 // its own, and those threads elsewhere (nfscarbon_audio_mixer_core, carbon_gpu_command_core,
 // carbon_gpu_recorder_core), keeps them apart. A pinned thread cannot move away from a busy core.
-REXCVAR_DEFINE_INT32(nfscarbon_preparer_core, -1, "Carbon",
+// Measured at 480p (session 31): with the preparer on core 0, the GPU command thread and the recorder
+// on core 1 and the audio mixer on core 2, crowded Race Wars starts went from 17.8 to 19.9 fps and
+// mid-race from 26.2 to 28.3 fps (the preparer from 84-85 % to 90-94 % of a core), with no audio
+// request left without data. Cores 0-2 are an application's own on every launcher.
+REXCVAR_DEFINE_INT32(nfscarbon_preparer_core, 0, "Carbon",
                      "Switch: pin the frame preparer thread to this core (0-3); -1 = let Horizon choose")
     .range(-1, 3)
     .lifecycle(rex::cvar::Lifecycle::kInitOnly);

@@ -129,7 +129,7 @@ REXCVAR_DEFINE_BOOL(carbon_gpu_debug_cycle, false, "CarbonGPU",
 REXCVAR_DEFINE_BOOL(carbon_gpu_record_thread, true, "CarbonGPU",
                     "Record the Vulkan commands on a thread of their own, off the GPU command thread "
                     "(read at start-up)");
-REXCVAR_DEFINE_INT32(carbon_gpu_recorder_core, -1, "CarbonGPU",
+REXCVAR_DEFINE_INT32(carbon_gpu_recorder_core, 1, "CarbonGPU",
                      "Switch: pin the Vulkan recorder thread to this core (0-3); -1 = let Horizon choose "
                      "(read at start-up)")
     .range(-1, 3);
@@ -756,13 +756,14 @@ void Renderer::Shutdown() {
   // The process is exiting; the device and allocator die with the provider.
 }
 
-// Off by default (-1): pins the GPU command thread to one core. Horizon moves a woken thread to
+// Pins the GPU command thread to one core (1 by default, with the recorder; see
+// nfscarbon_preparer_core in app/src/frame_handoff_hook.cpp for the measurement). Horizon moves a woken thread to
 // another core only when that core is idle, so with all four cores busy the command thread
 // (0x2C) can wait behind the audio mixer (0x2A) on a shared core: a Race Wars start at stock
 // clocks had a 1.9 s frame with 38 ms of draws and no command processor idle time. Pinning it
 // and the mixer (nfscarbon_audio_mixer_core) to different cores keeps them apart; a pinned
 // thread can still wait if its own core saturates, hence the test cvar.
-REXCVAR_DEFINE_INT32(carbon_gpu_command_core, -1, "CarbonGPU",
+REXCVAR_DEFINE_INT32(carbon_gpu_command_core, 1, "CarbonGPU",
                      "Switch: pin the GPU command thread to this core (0-3); -1 = let Horizon choose")
     .range(-1, 3);
 

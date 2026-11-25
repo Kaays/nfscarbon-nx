@@ -45,9 +45,13 @@ extern "C" bool RexSwitchSetCurrentThreadPriorityOk(int priority);
 extern "C" bool RexSwitchPinCurrentThreadToCore(int core);
 #endif
 
-// Off by default (-1). See carbon_gpu_command_core (app/renderer/src/renderer.cpp): at 0x2A the
-// mixer can hold a core for a second at a Race Wars start, and a thread that shares that core waits.
-REXCVAR_DEFINE_INT32(nfscarbon_audio_mixer_core, -1, "Carbon",
+// At 0x2A the mixer can hold a core for a second at a Race Wars start, and a thread that shares that
+// core waits; it gets core 2 to itself.
+// Measured at 480p (session 31): with the preparer on core 0, the GPU command thread and the recorder
+// on core 1 and the audio mixer on core 2, crowded Race Wars starts went from 17.8 to 19.9 fps and
+// mid-race from 26.2 to 28.3 fps (the preparer from 84-85 % to 90-94 % of a core), with no audio
+// request left without data. Cores 0-2 are an application's own on every launcher.
+REXCVAR_DEFINE_INT32(nfscarbon_audio_mixer_core, 2, "Carbon",
                      "Switch: pin the game's audio mixer thread to this core (0-3); -1 = let Horizon "
                      "choose")
     .range(-1, 3)
