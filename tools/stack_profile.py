@@ -17,6 +17,9 @@ Options:
   --fps-min F        only report intervals with game fps >= F
   --top N            rows per table (default 60)
   --focus NAME       also break down the time under NAME by the function it calls next
+  --graph            also print the call graph: every function with at least --graph-min % inclusive and
+                     the functions it calls, with the share of the thread spent through each call
+  --graph-min P      threshold for --graph (default 1.0)
 """
 import argparse
 import bisect
@@ -92,6 +95,8 @@ def main():
     ap.add_argument("--fps-min", type=float)
     ap.add_argument("--top", type=int, default=60)
     ap.add_argument("--focus")
+    ap.add_argument("--graph", action="store_true")
+    ap.add_argument("--graph-min", type=float, default=1.0)
     args = ap.parse_args()
 
     addrs, names = load_symbols(args.elf)
@@ -110,6 +115,7 @@ def main():
     per_thread = collections.defaultdict(lambda: {"n": 0, "incl": collections.Counter(),
                                                   "self": collections.Counter(),
                                                   "focus": collections.Counter(), "focus_n": 0,
+                                                  "edges": collections.Counter(),
                                                   "cpu": [], "name": ""})
     used_intervals = 0
     for (secs, fps, threads), samples in read_samples(args.bin):
@@ -132,6 +138,10 @@ def main():
             t["self"][stack[0]] += 1
             for f in set(stack):
                 t["incl"][f] += 1
+            if args.graph:
+                # stack is leaf first: stack[k + 1] called stack[k]. Each edge once per sample.
+                t["edges"].update({(stack[k + 1], stack[k]) for k in range(len(stack) - 1)
+                                   if stack[k + 1] != stack[k]})
             if args.focus:
                 # Stack is leaf first: the function called by the focus one sits just before it.
                 for k, f in enumerate(stack):
@@ -163,6 +173,21 @@ def main():
         lines.append("  self (time in the function itself):")
         for f, c in t["self"].most_common(args.top // 2):
             lines.append(f"   {100.0 * c / t['n']:6.2f}%  {short(f)}")
+        if args.graph:
+            callees = collections.defaultdict(list)
+            for (caller, callee), c in t["edges"].items():
+                callees[caller].append((c, callee))
+            lines.append(f"  call graph (functions with at least {args.graph_min}% inclusive; under each, what "
+                         f"it calls and the share of the thread spent through that call):")
+            for f, c in t["incl"].most_common():
+                pct = 100.0 * c / t["n"]
+                if pct < args.graph_min:
+                    break
+                lines.append(f"   {pct:6.2f}% incl {100.0 * t['self'][f] / t['n']:5.2f}% self  {short(f)}")
+                for cc, g in sorted(callees.get(f, []), reverse=True)[:12]:
+                    if 100.0 * cc / t["n"] < args.graph_min / 2:
+                        break
+                    lines.append(f"            -> {100.0 * cc / t['n']:6.2f}%  {short(g)}")
         if args.focus and t["focus_n"]:
             lines.append(f"  under {args.focus} ({100.0 * t['focus_n'] / t['n']:.2f}% of the thread), "
                          f"by the function it calls:")
