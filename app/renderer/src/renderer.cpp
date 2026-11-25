@@ -529,6 +529,16 @@ bool Renderer::Initialize(GpuSystem* system, rex::ui::vulkan::VulkanProvider* pr
     VkPhysicalDeviceProperties pdp = {};
     ifn.vkGetPhysicalDeviceProperties(vulkan_device_->physical_device(), &pdp);
     ts_period_ns_ = pdp.limits.timestampPeriod;
+#if defined(__SWITCH__)
+    // NVK reports 1 ns per tick, but on the Switch the GPU timer counts at 614.4 MHz (the rate
+    // Horizon programs; emulators convert with the same 384/625). Measured: with 1 ns, "gpu time
+    // per frame" plus the idle gap between frames came to 0.61 of the frame time in GPU-bound
+    // stretches (28.4 against 46.5 ms); scaled, they match.
+    if (ts_period_ns_ == 1.0f) {
+      ts_period_ns_ = float(1e9 / 614.4e6);
+      REXGPU_INFO("[carbon-gpu] GPU timestamps: {:.4f} ns per tick (614.4 MHz timer)", ts_period_ns_);
+    }
+#endif
     pfn_write_timestamp_ = reinterpret_cast<PFN_vkCmdWriteTimestamp>(
         ifn.vkGetDeviceProcAddr(vk_device_, "vkCmdWriteTimestamp"));
     pfn_get_query_results_ = reinterpret_cast<PFN_vkGetQueryPoolResults>(
