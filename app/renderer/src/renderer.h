@@ -22,6 +22,7 @@
 #include <rex/ui/vulkan/api.h>
 #include <rex/ui/vulkan/mem_alloc.h>
 
+#include "cmd_recorder.h"
 #include "command_processor.h"
 #include "gpu_common.h"
 #include "shader_translator.h"
@@ -623,6 +624,7 @@ class Renderer {
   VkDevice vk_device_ = VK_NULL_HANDLE;
   VmaAllocator allocator_ = VK_NULL_HANDLE;
   PFN_vkCmdCopyImage pfn_copy_image_ = nullptr;
+  CmdRecorder rec_;  // every vkCmd* of the renderer goes through it
 
   std::array<Frame, kFramesInFlight> frames_;
   uint32_t frame_index_ = 0;

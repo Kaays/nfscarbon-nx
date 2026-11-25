@@ -225,8 +225,7 @@ RenderTarget* Renderer::GetRenderTarget(bool depth, uint32_t edram_base, uint32_
                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
       VkClearColorValue black = {};
       VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-      vulkan_device_->functions().vkCmdClearColorImage(
-          ccb, rt->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &range);
+      rec_.ClearColorImage(ccb, rt->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, black, range);
     }
     render_targets_.emplace(key, std::move(created));
     REXGPU_DEBUG("[carbon-gpu] new {} render target base {} pitch {} format {} -> {}x{}",
@@ -258,8 +257,8 @@ RenderTarget* Renderer::GetRenderTarget(bool depth, uint32_t edram_base, uint32_
     region.srcSubresource = {aspect, 0, 0, 1};
     region.dstSubresource = {aspect, 0, 0, 1};
     region.extent = {std::min(old.width, rt->width), std::min(old.height, rt->height), 1};
-    pfn_copy_image_(cb, old.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, rt->image,
-                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    rec_.CopyImage(cb, old.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, rt->image,
+                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
   }
   VkImage old_image = old.image;
   VmaAllocation old_alloc = old.allocation;
@@ -619,7 +618,7 @@ void Renderer::Resolve(const RegisterFile& regs) {
         ri.layerCount = 1;
         ri.colorAttachmentCount = 1;
         ri.pColorAttachments = &att;
-        dfn.vkCmdBeginRendering(cb, &ri);
+        rec_.BeginRendering(cb, ri);
         VkPipeline pipeline = GetResolvePipeline(dest->format.host_format, is_depth);
         VkDescriptorSet set = AllocateDescriptorSet(resolve_set_layout_);
         VkDescriptorImageInfo ii = {point_sampler_, src->sample_view,
@@ -632,9 +631,8 @@ void Renderer::Resolve(const RegisterFile& regs) {
         w.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         w.pImageInfo = &ii;
         dfn.vkUpdateDescriptorSets(vk_device_, 1, &w, 0, nullptr);
-        dfn.vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-        dfn.vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, resolve_pipeline_layout_,
-                                    0, 1, &set, 0, nullptr);
+        rec_.BindPipeline(cb, pipeline, nullptr);
+        rec_.BindDescriptorSet(cb, resolve_pipeline_layout_, 0, set, 0, nullptr);
         struct {
           int32_t offset[2];
           float scale;
@@ -642,14 +640,13 @@ void Renderer::Resolve(const RegisterFile& regs) {
         } pc = {{0, -dy},
                 is_depth ? 1.0f : std::ldexp(1.0f, int(dest_info.copy_dest_exp_bias)),
                 (!is_depth && dest_info.copy_dest_swap) ? 1u : 0u};
-        dfn.vkCmdPushConstants(cb, resolve_pipeline_layout_, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16,
-                               &pc);
+        rec_.PushConstants(cb, resolve_pipeline_layout_, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16, &pc);
         VkViewport vp = {0.0f, 0.0f, float(dest->width), float(dest->height), 0.0f, 1.0f};
         VkRect2D sc = {{dx0, dy0}, {uint32_t(dx1 - dx0), uint32_t(dy1 - dy0)}};
-        dfn.vkCmdSetViewport(cb, 0, 1, &vp);
-        dfn.vkCmdSetScissor(cb, 0, 1, &sc);
-        dfn.vkCmdDraw(cb, 3, 1, 0, 0);
-        dfn.vkCmdEndRendering(cb);
+        rec_.SetViewport(cb, vp);
+        rec_.SetScissor(cb, sc);
+        rec_.Draw(cb, 3);
+        rec_.EndRendering(cb);
         GpuStamp(kTagResolve);
         TransitionImage(cb, dest->image, VK_IMAGE_ASPECT_COLOR_BIT, dest->layout,
                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 1, 1);
@@ -716,7 +713,7 @@ void Renderer::Resolve(const RegisterFile& regs) {
     int32_t cy1 = std::min<int32_t>(int32_t(std::ceil(y1 * res_scale_)), int32_t(rt->height));
     if (cx1 > cx0 && cy1 > cy0) {
       VkClearRect rect = {{{cx0, cy0}, {uint32_t(cx1 - cx0), uint32_t(cy1 - cy0)}}, 0, 1};
-      dfn.vkCmdClearAttachments(frame().cb, 1, &clear, 1, &rect);
+      rec_.ClearAttachment(frame().cb, clear, rect);
       rt->write_gen = ++rt_write_counter_;
     }
     EndRendering();

@@ -644,7 +644,7 @@ extern "C" REX_FUNC(sub_826C4BE8) {
 // (with the node functions the PGO build inlines into its caller) is its biggest item. Here the same
 // loop runs natively, the node functions still recompiled, with an optional measurement of which
 // nodes take the time (nfscarbon_audio_graph_stats) to pick the ones worth writing natively.
-REXCVAR_DEFINE_BOOL(nfscarbon_audio_graph_stats, true, "Carbon",
+REXCVAR_DEFINE_BOOL(nfscarbon_audio_graph_stats, false, "Carbon",
                     "Log every 10 s how the audio server's parameter graph spends its time, per node "
                     "function");
 

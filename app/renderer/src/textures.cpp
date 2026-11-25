@@ -116,11 +116,11 @@ void Renderer::CreateNullTextures() {
                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, layers);
     VkClearColorValue black = {{0.0f, 0.0f, 0.0f, 0.0f}};
     VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, layers};
-    dfn.vkCmdClearColorImage(f.cb, n->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1,
-                             &range);
+    rec_.ClearColorImage(f.cb, n->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, black, range);
     TransitionImage(f.cb, n->image, VK_IMAGE_ASPECT_COLOR_BIT, layout,
                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 1, layers);
   }
+  rec_.Drain();
   dfn.vkEndCommandBuffer(f.cb);
   VkSubmitInfo si = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
   si.commandBufferCount = 1;
@@ -252,8 +252,8 @@ void Renderer::UploadTexture(Texture& t) {
   VkCommandBuffer cb = frame().upload_cb;
   TransitionImage(cb, t.image, VK_IMAGE_ASPECT_COLOR_BIT, t.layout,
                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-  dfn.vkCmdCopyBufferToImage(cb, buffer, t.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                             uint32_t(copies.size()), copies.data());
+  rec_.CopyBufferToImage(cb, buffer, t.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                         uint32_t(copies.size()), copies.data());
   TransitionImage(cb, t.image, VK_IMAGE_ASPECT_COLOR_BIT, t.layout,
                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   ++stats_.textures_uploaded;
@@ -473,8 +473,8 @@ Texture* Renderer::GetCubeFromResolvedFaces(const GuestTexture& guest) {
                   std::min(cube->height, f->height - uint32_t(std::min<int32_t>(sy, int32_t(f->height)))),
                   1};
       if (r.extent.width && r.extent.height) {
-        dfn.vkCmdCopyImage(cb, f->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, cube->image,
-                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &r);
+        rec_.CopyImage(cb, f->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, cube->image,
+                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &r);
       }
     }
     for (uint32_t i = 0; i < 6; ++i) {

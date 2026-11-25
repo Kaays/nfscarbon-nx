@@ -19,6 +19,7 @@ set(CARBON_GPU_COMMON_SOURCES
     src/shader_translator.cpp
     src/shader_compiler.cpp
     src/renderer.cpp
+    src/cmd_recorder.cpp
     src/render_targets.cpp
     src/textures.cpp
     src/texture_decode.cpp

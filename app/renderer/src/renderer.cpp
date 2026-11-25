@@ -126,7 +126,10 @@ REXCVAR_DEFINE_INT32(carbon_gpu_render_scale, 100, "CarbonGPU",
     .range(25, 200);
 REXCVAR_DEFINE_BOOL(carbon_gpu_debug_cycle, false, "CarbonGPU",
                     "Debug: every 10 s cycle between normal, skipping small post passes, skipping the main scene, and both");
-REXCVAR_DEFINE_BOOL(carbon_gpu_ps_timing, true, "CarbonGPU",
+REXCVAR_DEFINE_BOOL(carbon_gpu_record_thread, true, "CarbonGPU",
+                    "Record the Vulkan commands on a thread of their own, off the GPU command thread "
+                    "(read at start-up)");
+REXCVAR_DEFINE_BOOL(carbon_gpu_ps_timing, false, "CarbonGPU",
                     "Measurement: GPU time per pixel shader in the big scene passes, one frame in 30 "
                     "(logged with the pass statistics)");
 REXCVAR_DEFINE_BOOL(carbon_gpu_draw_profile, true, "CarbonGPU",
@@ -530,6 +533,12 @@ bool Renderer::Initialize(GpuSystem* system, rex::ui::vulkan::VulkanProvider* pr
         ifn.vkGetDeviceProcAddr(vk_device_, "vkCmdWriteTimestamp"));
     pfn_get_query_results_ = reinterpret_cast<PFN_vkGetQueryPoolResults>(
         ifn.vkGetDeviceProcAddr(vk_device_, "vkGetQueryPoolResults"));
+    if (!rec_.Init(ifn.vkGetDeviceProcAddr, vk_device_, REXCVAR_GET(carbon_gpu_record_thread))) {
+      REXGPU_ERROR("[carbon-gpu] command recorder: a vkCmd entry point is missing");
+      return false;
+    }
+    REXGPU_INFO("[carbon-gpu] Vulkan commands recorded {}",
+                rec_.threaded() ? "on a thread of their own" : "on the command thread");
     if (ts_period_ns_ > 0.0f && pfn_write_timestamp_ && pfn_get_query_results_) {
       for (uint32_t i = 0; i < kFramesInFlight; ++i) {
         VkQueryPoolCreateInfo qci = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
@@ -706,6 +715,7 @@ void Renderer::Shutdown() {
   if (!vk_device_) {
     return;
   }
+  rec_.Shutdown();
   const auto& dfn = vulkan_device_->functions();
   for (Frame& f : frames_) {
     if (f.submitted) {
@@ -805,6 +815,7 @@ bool Renderer::BeginFrame() {
   }
   cube_face_in_frame_ = 0;
   skip_resolve_rt_ = nullptr;
+  rec_.Drain();  // nothing may still be recording into this pool's command buffers
   dfn.vkResetCommandPool(vk_device_, f.pool, 0);
   VkCommandBufferBeginInfo bi = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
   bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -813,7 +824,7 @@ bool Renderer::BeginFrame() {
   ts_count_[frame_index_] = 0;
   ts_valid_[frame_index_] = false;
   if (ts_pool_[frame_index_]) {
-    dfn.vkCmdResetQueryPool(f.cb, ts_pool_[frame_index_], 0, kMaxStamps);
+    rec_.ResetQueryPool(f.cb, ts_pool_[frame_index_], 0, kMaxStamps);
     GpuStamp(kTagStart);
   }
   ps_count_[frame_index_] = 0;
@@ -821,7 +832,7 @@ bool Renderer::BeginFrame() {
   ps_active_[frame_index_] = ps_pool_[frame_index_] && REXCVAR_GET(carbon_gpu_ps_timing) &&
                              frame_number_ % 30 == 0;
   if (ps_active_[frame_index_]) {
-    dfn.vkCmdResetQueryPool(f.cb, ps_pool_[frame_index_], 0, kPsStamps);
+    rec_.ResetQueryPool(f.cb, ps_pool_[frame_index_], 0, kPsStamps);
   }
   f.number = frame_number_;
   frame_open_ = true;
@@ -897,6 +908,8 @@ void Renderer::EndFrame(bool present, const std::function<void(VkCommandBuffer)>
   }
   GpuStamp(kTagEnd);
   ts_valid_[frame_index_] = true;
+  // Everything recorded must be in the command buffers before they end.
+  rec_.Drain();
   const double submit_start = NowSeconds();
   dfn.vkEndCommandBuffer(f.upload_cb);
   dfn.vkEndCommandBuffer(f.cb);
@@ -1027,8 +1040,7 @@ void Renderer::TransitionImage(VkCommandBuffer cb, VkImage image, VkImageAspectF
   b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
   b.image = image;
   b.subresourceRange = {aspect, 0, levels, 0, layers};
-  dfn.vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                           VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
+  rec_.ImageBarrier(cb, b);
   layout = new_layout;
 }
 
@@ -1044,7 +1056,7 @@ void Renderer::EndRendering() {
     PsStamp(0);  // closes the last shader's span
     ps_open_ = false;
   }
-  vulkan_device_->functions().vkCmdEndRendering(frame().cb);
+  rec_.EndRendering(frame().cb);
   StampInfo info;
   info.width = current_pass_.width;
   info.height = current_pass_.height;
@@ -1074,7 +1086,7 @@ void Renderer::GpuStamp(GpuTag tag, const StampInfo* info) {
   if (!pool || n >= kMaxStamps) {
     return;
   }
-  pfn_write_timestamp_(frame().cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, pool, n);
+  rec_.WriteTimestamp(frame().cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, pool, n);
   ts_tag_[frame_index_][n] = tag;
   ts_info_[frame_index_][n] = info ? *info : StampInfo();
   ++n;
@@ -1083,7 +1095,7 @@ void Renderer::GpuStamp(GpuTag tag, const StampInfo* info) {
 void Renderer::PsStamp(uint64_t hash) {
   uint32_t& n = ps_count_[frame_index_];
   if (n >= kPsStamps) return;
-  pfn_write_timestamp_(frame().cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, ps_pool_[frame_index_], n);
+  rec_.WriteTimestamp(frame().cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, ps_pool_[frame_index_], n);
   ps_stamp_hash_[frame_index_][n] = hash;
   ps_stamp_draws_[frame_index_][n] = 0;
   ++n;
@@ -1202,7 +1214,7 @@ bool Renderer::BeginRendering(const PassState& pass) {
   ri.pColorAttachments = color;
   ri.pDepthAttachment = pass.depth ? &depth : nullptr;
   ri.pStencilAttachment = pass.depth ? &depth : nullptr;
-  dfn.vkCmdBeginRendering(cb, &ri);
+  rec_.BeginRendering(cb, ri);
   rendering_ = true;
   current_pass_ = pass;
   if (tracing_) {
@@ -2951,12 +2963,13 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
   const auto& dfn = vulkan_device_->functions();
   VkCommandBuffer cb = frame().cb;
   if (cmd_.pipeline != pipeline) {
+    CmdRecorder::PrefetchFn prefetch = nullptr;
 #if defined(__SWITCH__)
     if (nvk_prefetch_ && vk_switch_precargar_pipeline) {
-      vk_switch_precargar_pipeline(pipeline);
+      prefetch = vk_switch_precargar_pipeline;
     }
 #endif
-    dfn.vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+    rec_.BindPipeline(cb, pipeline, prefetch);
     cmd_.pipeline = pipeline;
   }
   ++pass_draws_;
@@ -2978,8 +2991,7 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
   }
   VkPipelineLayout layout = GetPipelineLayout(key.vs_textures, key.ps_textures);
   VkDescriptorSet set0 = upload_chunks_[current_chunk_].set0;
-  dfn.vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &set0, 3,
-                              dyn_offsets);
+  rec_.BindDescriptorSet(cb, layout, 0, set0, 3, dyn_offsets);
   // Texture sets stay bound while the set layouts they sit under are unchanged.
   if (cmd_.layout != layout) {
     if (cmd_.vs_textures != key.vs_textures) {
@@ -2992,22 +3004,20 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
     cmd_.ps_textures = key.ps_textures;
   }
   if (vs_set && cmd_.set1 != vs_set) {
-    dfn.vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 1, 1, &vs_set, 0,
-                                nullptr);
+    rec_.BindDescriptorSet(cb, layout, 1, vs_set, 0, nullptr);
     cmd_.set1 = vs_set;
   }
   if (ps_set && cmd_.set2 != ps_set) {
-    dfn.vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2, 1, &ps_set, 0,
-                                nullptr);
+    rec_.BindDescriptorSet(cb, layout, 2, ps_set, 0, nullptr);
     cmd_.set2 = ps_set;
   }
   if (!cmd_.viewport_valid || std::memcmp(&cmd_.viewport, &viewport, sizeof(viewport)) != 0) {
-    dfn.vkCmdSetViewport(cb, 0, 1, &viewport);
+    rec_.SetViewport(cb, viewport);
     cmd_.viewport = viewport;
     cmd_.viewport_valid = true;
   }
   if (!cmd_.scissor_valid || std::memcmp(&cmd_.scissor, &scissor, sizeof(scissor)) != 0) {
-    dfn.vkCmdSetScissor(cb, 0, 1, &scissor);
+    rec_.SetScissor(cb, scissor);
     cmd_.scissor = scissor;
     cmd_.scissor_valid = true;
   }
@@ -3023,7 +3033,7 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
       offset *= float(1 << 24);
     }
     if (!cmd_.depth_bias_valid || cmd_.depth_bias[0] != offset || cmd_.depth_bias[1] != scale) {
-      dfn.vkCmdSetDepthBias(cb, offset, 0.0f, scale);
+      rec_.SetDepthBias(cb, offset, 0.0f, scale);
       cmd_.depth_bias[0] = offset;
       cmd_.depth_bias[1] = scale;
       cmd_.depth_bias_valid = true;
@@ -3033,7 +3043,7 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
     float blend[4] = {regs.GetFloat(XE_GPU_REG_RB_BLEND_RED), regs.GetFloat(XE_GPU_REG_RB_BLEND_GREEN),
                       regs.GetFloat(XE_GPU_REG_RB_BLEND_BLUE), regs.GetFloat(XE_GPU_REG_RB_BLEND_ALPHA)};
     if (!cmd_.blend_valid || std::memcmp(cmd_.blend, blend, sizeof(blend)) != 0) {
-      dfn.vkCmdSetBlendConstants(cb, blend);
+      rec_.SetBlendConstants(cb, blend);
       std::memcpy(cmd_.blend, blend, sizeof(blend));
       cmd_.blend_valid = true;
     }
@@ -3046,12 +3056,7 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
     uint32_t st[6] = {ref.stencilref,       ref_bf.stencilref,       ref.stencilmask,
                       ref_bf.stencilmask,   ref.stencilwritemask,    ref_bf.stencilwritemask};
     if (!cmd_.stencil_valid || std::memcmp(cmd_.stencil, st, sizeof(st)) != 0) {
-      dfn.vkCmdSetStencilReference(cb, VK_STENCIL_FACE_FRONT_BIT, st[0]);
-      dfn.vkCmdSetStencilReference(cb, VK_STENCIL_FACE_BACK_BIT, st[1]);
-      dfn.vkCmdSetStencilCompareMask(cb, VK_STENCIL_FACE_FRONT_BIT, st[2]);
-      dfn.vkCmdSetStencilCompareMask(cb, VK_STENCIL_FACE_BACK_BIT, st[3]);
-      dfn.vkCmdSetStencilWriteMask(cb, VK_STENCIL_FACE_FRONT_BIT, st[4]);
-      dfn.vkCmdSetStencilWriteMask(cb, VK_STENCIL_FACE_BACK_BIT, st[5]);
+      rec_.SetStencil(cb, st);
       std::memcpy(cmd_.stencil, st, sizeof(st));
       cmd_.stencil_valid = true;
     }
@@ -3059,14 +3064,14 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
   if (host_indexed) {
     if (cmd_.index_buffer != index_buffer || cmd_.index_offset != index_offset ||
         cmd_.index_type != index_type) {
-      dfn.vkCmdBindIndexBuffer(cb, index_buffer, index_offset, index_type);
+      rec_.BindIndexBuffer(cb, index_buffer, index_offset, index_type);
       cmd_.index_buffer = index_buffer;
       cmd_.index_offset = index_offset;
       cmd_.index_type = index_type;
     }
-    dfn.vkCmdDrawIndexed(cb, host_count, 1, 0, 0, 0);
+    rec_.DrawIndexed(cb, host_count);
   } else {
-    dfn.vkCmdDraw(cb, host_count, 1, 0, 0);
+    rec_.Draw(cb, host_count);
   }
   Mark(6);  // Vulkan recording
 }
@@ -3269,7 +3274,7 @@ void Renderer::RecordPresent(VkCommandBuffer cb, VkImageView source, uint32_t so
   ri.layerCount = 1;
   ri.colorAttachmentCount = 1;
   ri.pColorAttachments = &att;
-  dfn.vkCmdBeginRendering(cb, &ri);
+  rec_.BeginRendering(cb, ri);
   if (source) {
     VkDescriptorSet set = AllocateDescriptorSet(present_set_layout_);
     VkDescriptorImageInfo ii = {linear_sampler_, source, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
@@ -3286,9 +3291,8 @@ void Renderer::RecordPresent(VkCommandBuffer cb, VkImageView source, uint32_t so
     w[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     w[1].pBufferInfo = &bi;
     dfn.vkUpdateDescriptorSets(vk_device_, 2, w, 0, nullptr);
-    dfn.vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, present_pipeline_);
-    dfn.vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, present_pipeline_layout_, 0,
-                                1, &set, 0, nullptr);
+    rec_.BindPipeline(cb, present_pipeline_, nullptr);
+    rec_.BindDescriptorSet(cb, present_pipeline_layout_, 0, set, 0, nullptr);
     struct {
       float scale[2];
       uint32_t use_gamma;
@@ -3304,14 +3308,14 @@ void Renderer::RecordPresent(VkCommandBuffer cb, VkImageView source, uint32_t so
     // The guest output may be smaller than the source image (padded resolves).
     pc.scale[0] = source_scale / float(source_width);
     pc.scale[1] = source_scale / float(source_height);
-    dfn.vkCmdPushConstants(cb, present_pipeline_layout_, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 20, &pc);
+    rec_.PushConstants(cb, present_pipeline_layout_, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 20, &pc);
     VkViewport vp = {0.0f, 0.0f, float(width), float(height), 0.0f, 1.0f};
     VkRect2D sc = {{0, 0}, {width, height}};
-    dfn.vkCmdSetViewport(cb, 0, 1, &vp);
-    dfn.vkCmdSetScissor(cb, 0, 1, &sc);
-    dfn.vkCmdDraw(cb, 3, 1, 0, 0);
+    rec_.SetViewport(cb, vp);
+    rec_.SetScissor(cb, sc);
+    rec_.Draw(cb, 3);
   }
-  dfn.vkCmdEndRendering(cb);
+  rec_.EndRendering(cb);
   TransitionImage(cb, dest, VK_IMAGE_ASPECT_COLOR_BIT, dest_layout,
                   rex::ui::vulkan::VulkanPresenter::kGuestOutputInternalLayout);
 }
@@ -3426,8 +3430,8 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
       VkBufferImageCopy region = {};
       region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
       region.imageExtent = {front->width, front->height, 1};
-      vulkan_device_->functions().vkCmdCopyImageToBuffer(
-          cb, front->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dump_buffer, 1, &region);
+      rec_.CopyImageToBuffer(cb, front->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dump_buffer, 1,
+                             &region);
       TransitionImage(cb, front->image, VK_IMAGE_ASPECT_COLOR_BIT, front->layout,
                       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     }
@@ -3636,6 +3640,13 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
             stats_.upload_kind_bytes[0] * mib, stats_.upload_kind_bytes[1] * mib,
             stats_.upload_kind_bytes[2] * mib, stats_.upload_kind_bytes[3] * mib,
             stats_.upload_kind_bytes[4] * mib, stats_.submit_s * ms, stats_.present_s * ms, stats_.cap_sleep_s * ms);
+      }
+      if (rec_.threaded()) {
+        const CmdRecorder::Stats r = rec_.TakeStats();
+        REXGPU_INFO("[carbon-gpu] recorder thread per frame: busy {:.2f} ms, {:.0f} records, {:.1f} wakes | "
+                    "command thread waited for it {:.2f} ms",
+                    r.busy_s * 1000.0 / frames, double(r.records) / frames, double(r.wakes) / frames,
+                    r.drain_wait_s * 1000.0 / frames);
       }
       if (ps_frames_) {
         std::vector<std::pair<uint64_t, PsTime>> top(ps_time_.begin(), ps_time_.end());
