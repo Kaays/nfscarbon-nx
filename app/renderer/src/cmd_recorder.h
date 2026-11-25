@@ -33,7 +33,8 @@ class CmdRecorder {
  public:
   using PrefetchFn = void (*)(VkPipeline);
 
-  bool Init(PFN_vkGetDeviceProcAddr gdpa, VkDevice device, bool threaded);
+  // core >= 0 pins the worker to that core (Switch).
+  bool Init(PFN_vkGetDeviceProcAddr gdpa, VkDevice device, bool threaded, int core = -1);
   void Shutdown();
   bool threaded() const { return threaded_; }
 
@@ -120,6 +121,7 @@ class CmdRecorder {
   } fn_ = {};
 
   bool threaded_ = false;
+  int core_ = -1;
   // Single producer (the command thread), single consumer (the worker). Offsets grow without
   // wrapping; the position in the ring is offset % kRingSize.
   static constexpr uint32_t kRingSize = 8u << 20;

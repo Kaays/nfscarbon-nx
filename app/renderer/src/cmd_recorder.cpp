@@ -12,6 +12,7 @@
 extern "C" uint64_t RexSwitchUseAllProcessCores(void);
 extern "C" bool RexSwitchSetCurrentThreadPriorityOk(int priority);
 extern "C" void RexSwitchRegisterCurrentThread(void);
+extern "C" bool RexSwitchPinCurrentThreadToCore(int core);
 extern "C" void RexSwitchPerfSetThreadName(u32 handle, const char* name);
 #endif
 
@@ -167,7 +168,8 @@ T* Payload(void* record) {
 
 }  // namespace
 
-bool CmdRecorder::Init(PFN_vkGetDeviceProcAddr gdpa, VkDevice device, bool threaded) {
+bool CmdRecorder::Init(PFN_vkGetDeviceProcAddr gdpa, VkDevice device, bool threaded, int core) {
+  core_ = core;
 #define LOAD(name)                                                                          \
   fn_.name = reinterpret_cast<PFN_vkCmd##name>(gdpa(device, "vkCmd" #name));                 \
   if (!fn_.name) return false;
@@ -282,6 +284,9 @@ void CmdRecorder::Worker() {
   RexSwitchUseAllProcessCores();
   RexSwitchSetCurrentThreadPriorityOk(0x2C);  // the GPU command thread's priority
   RexSwitchRegisterCurrentThread();
+  if (core_ >= 0) {
+    RexSwitchPinCurrentThreadToCore(core_);
+  }
   const u32 handle = threadGetCurHandle();
 #endif
   uint64_t read = 0;

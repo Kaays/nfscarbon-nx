@@ -129,6 +129,10 @@ REXCVAR_DEFINE_BOOL(carbon_gpu_debug_cycle, false, "CarbonGPU",
 REXCVAR_DEFINE_BOOL(carbon_gpu_record_thread, true, "CarbonGPU",
                     "Record the Vulkan commands on a thread of their own, off the GPU command thread "
                     "(read at start-up)");
+REXCVAR_DEFINE_INT32(carbon_gpu_recorder_core, -1, "CarbonGPU",
+                     "Switch: pin the Vulkan recorder thread to this core (0-3); -1 = let Horizon choose "
+                     "(read at start-up)")
+    .range(-1, 3);
 REXCVAR_DEFINE_BOOL(carbon_gpu_ps_timing, false, "CarbonGPU",
                     "Measurement: GPU time per pixel shader in the big scene passes, one frame in 30 "
                     "(logged with the pass statistics)");
@@ -543,12 +547,16 @@ bool Renderer::Initialize(GpuSystem* system, rex::ui::vulkan::VulkanProvider* pr
         ifn.vkGetDeviceProcAddr(vk_device_, "vkCmdWriteTimestamp"));
     pfn_get_query_results_ = reinterpret_cast<PFN_vkGetQueryPoolResults>(
         ifn.vkGetDeviceProcAddr(vk_device_, "vkGetQueryPoolResults"));
-    if (!rec_.Init(ifn.vkGetDeviceProcAddr, vk_device_, REXCVAR_GET(carbon_gpu_record_thread))) {
+    if (!rec_.Init(ifn.vkGetDeviceProcAddr, vk_device_, REXCVAR_GET(carbon_gpu_record_thread),
+                   REXCVAR_GET(carbon_gpu_recorder_core))) {
       REXGPU_ERROR("[carbon-gpu] command recorder: a vkCmd entry point is missing");
       return false;
     }
-    REXGPU_INFO("[carbon-gpu] Vulkan commands recorded {}",
-                rec_.threaded() ? "on a thread of their own" : "on the command thread");
+    REXGPU_INFO("[carbon-gpu] Vulkan commands recorded {}{}",
+                rec_.threaded() ? "on a thread of their own" : "on the command thread",
+                REXCVAR_GET(carbon_gpu_recorder_core) >= 0
+                    ? fmt::format(", pinned to core {}", REXCVAR_GET(carbon_gpu_recorder_core))
+                    : std::string());
     if (ts_period_ns_ > 0.0f && pfn_write_timestamp_ && pfn_get_query_results_) {
       for (uint32_t i = 0; i < kFramesInFlight; ++i) {
         VkQueryPoolCreateInfo qci = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};

@@ -44,6 +44,7 @@
 #if REX_PLATFORM_SWITCH
 // sdk/src/core/threading_switch.cpp (its header pulls in the SDK's newlib shims).
 extern "C" bool RexSwitchSetCurrentThreadPriorityOk(int priority);
+extern "C" bool RexSwitchPinCurrentThreadToCore(int core);
 #endif
 
 REXCVAR_DEFINE_BOOL(nfscarbon_handoff_sleep, true, "Carbon",
@@ -66,6 +67,20 @@ REXCVAR_DEFINE_INT32(nfscarbon_handoff_priority, 0x3A, "Carbon",
                      "Switch: Horizon priority of the two handoff threads. 0 = leave them at 0x3B "
                      "like the rest of the game")
     .range(0, 0x3B)
+    .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+// Test switches, off by default. At 480p/600p the preparer (the game's simulation thread) is the
+// limit: 85-91 % of a core and almost never asleep, while the audio mixer (0x2A), the GPU command
+// thread and the recorder (0x2C) preempt it whenever they land on its core. Pinning it to a core of
+// its own, and those threads elsewhere (nfscarbon_audio_mixer_core, carbon_gpu_command_core,
+// carbon_gpu_recorder_core), keeps them apart. A pinned thread cannot move away from a busy core.
+REXCVAR_DEFINE_INT32(nfscarbon_preparer_core, -1, "Carbon",
+                     "Switch: pin the frame preparer thread to this core (0-3); -1 = let Horizon choose")
+    .range(-1, 3)
+    .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+REXCVAR_DEFINE_INT32(nfscarbon_executor_core, -1, "Carbon",
+                     "Switch: pin the frame executor thread (Main XThread) to this core (0-3); -1 = let "
+                     "Horizon choose")
+    .range(-1, 3)
     .lifecycle(rex::cvar::Lifecycle::kInitOnly);
 
 extern "C" void __imp__sub_82943548(PPCContext& __restrict ctx, uint8_t* base);
@@ -114,6 +129,12 @@ void RaisePriorityOnce(bool& done, const char* role) {
   }
   done = true;
 #if REX_PLATFORM_SWITCH
+  const int32_t core = role[0] == 'p' ? REXCVAR_GET(nfscarbon_preparer_core)
+                                      : REXCVAR_GET(nfscarbon_executor_core);
+  if (core >= 0) {
+    const bool pinned = RexSwitchPinCurrentThreadToCore(core);
+    REXLOG_INFO("[handoff] {} thread pinned to core {}: {}", role, core, pinned ? "ok" : "refused");
+  }
   const int32_t priority = REXCVAR_GET(nfscarbon_handoff_priority);
   if (priority >= 0x1C && priority <= 0x3B) {
     const bool ok = RexSwitchSetCurrentThreadPriorityOk(int(priority));
