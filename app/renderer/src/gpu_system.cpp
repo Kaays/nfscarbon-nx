@@ -127,7 +127,34 @@ void GpuSystem::VsyncThreadMain() {
   using clock = std::chrono::steady_clock;
   auto next = clock::now();
   auto next_watchdog = next + std::chrono::seconds(3);
+  // Stall report, independent of the watchdog setting: when no frame has been presented for 8
+  // seconds, log the command processor state once every 8 seconds until frames come back. Packets
+  // still counting means the guest keeps feeding commands; packets frozen outside WAIT_REG_MEM
+  // means the command thread is stuck inside one packet.
+  uint32_t stall_swaps = 0;
+  uint32_t stall_packets = 0;
+  auto stall_since = next;
+  auto stall_next_report = next + std::chrono::seconds(8);
   while (vsync_running_) {
+    if (command_processor_) {
+      auto d = command_processor_->GetDebugState();
+      auto now_s = clock::now();
+      if (d.swaps != stall_swaps) {
+        stall_swaps = d.swaps;
+        stall_packets = d.packets;
+        stall_since = now_s;
+        stall_next_report = now_s + std::chrono::seconds(8);
+      } else if (now_s >= stall_next_report) {
+        stall_next_report = now_s + std::chrono::seconds(8);
+        REXGPU_WARN(
+            "[carbon-gpu] STALL: no frame for {:.1f} s (frames so far {}): packets +{} since the "
+            "last frame, last op {:02X}, wait_reg_mem {} ({:08X} ref {:X}), rptr {:X} wptr {:X}, "
+            "draws {}",
+            std::chrono::duration<double>(now_s - stall_since).count(), d.swaps,
+            d.packets - stall_packets, d.last_opcode, d.waiting_reg_mem, d.wait_addr, d.wait_ref,
+            d.read_ptr, d.write_ptr, d.draws);
+      }
+    }
     if (REXCVAR_GET(carbon_gpu_watchdog) && command_processor_ && clock::now() >= next_watchdog) {
       next_watchdog = clock::now() + std::chrono::seconds(3);
       auto d = command_processor_->GetDebugState();
