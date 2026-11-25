@@ -104,11 +104,23 @@ constexpr u64 kReportSeconds = 10;
  */
 constexpr u64 kStartDelayNs = 8000000000ULL;
 constexpr size_t kMaxSamples = 1 << 15;
-constexpr size_t kFrames = 10;
+constexpr size_t kFrames = 16;
 constexpr unsigned kCounterCount = 33;
 // In <NRO folder>/logs/rex/ (switch_crash_hooks.c computes it at startup).
 std::string ReportPath() {
   return std::string(RexSwitchLogDir()) + "rex_perfil.log";
+}
+/*
+ * The raw stack samples, for tools/stack_profile.py (inclusive time per function: which game system a
+ * thread's time sits under, which the report's per-stack counts cannot show when the time is spread
+ * over hundreds of functions). Written only with perfil_pilas.flag, started over every session.
+ * Little-endian: "RXPL", u32 version 1, u64 image base; then per report an interval record (u8 1,
+ * f32 seconds, f32 game fps, u16 threads, per thread u16 slot, f32 % of a core, u8 name length, name)
+ * and a samples record (u8 2, u32 count, per sample u16 slot, u8 frames, u8 0, u32 pc, u32 lr,
+ * u32 frame return addresses, all as offsets from the image base, 0xFFFFFFFF outside the image).
+ */
+std::string RawStacksPath() {
+  return std::string(RexSwitchLogDir()) + "rex_pilas.bin";
 }
 
 struct Slot {
@@ -336,6 +348,67 @@ std::vector<Count> Histogram(std::vector<u64>& addrs) {
   return out;
 }
 
+void WriteRawStacks(const std::vector<Sample>& samples, const std::vector<size_t>& order,
+                    double seconds, double fps) {
+  static bool started = false;
+  FILE* f = std::fopen(RawStacksPath().c_str(), started ? "ab" : "wb");
+  if (!f) {
+    return;
+  }
+  auto put = [f](const void* p, size_t n) { std::fwrite(p, 1, n, f); };
+  auto off = [](u64 a) -> u32 {
+    return (a >= g_base && a - g_base < 0xFFFFFFFFull) ? u32(a - g_base) : 0xFFFFFFFFu;
+  };
+  if (!started) {
+    started = true;
+    const u32 version = 1;
+    put("RXPL", 4);
+    put(&version, 4);
+    put(&g_base, 8);
+  }
+  {
+    const u8 type = 1;
+    const float secs = float(seconds), fps_f = float(fps);
+    const u16 count = u16(std::min<size_t>(order.size(), 0xFFFF));
+    put(&type, 1);
+    put(&secs, 4);
+    put(&fps_f, 4);
+    put(&count, 2);
+    for (size_t k = 0; k < count; ++k) {
+      const size_t i = order[k];
+      const u16 slot = u16(i);
+      const float cpu = float(g_slots[i].cpu);
+      const u8 len = u8(strnlen(g_slots[i].name, sizeof(g_slots[i].name)));
+      put(&slot, 2);
+      put(&cpu, 4);
+      put(&len, 1);
+      put(g_slots[i].name, len);
+    }
+  }
+  {
+    const u8 type = 2;
+    const u32 count = u32(samples.size());
+    put(&type, 1);
+    put(&count, 4);
+    for (const Sample& smp : samples) {
+      u8 nf = 0;
+      while (nf < kFrames && smp.frames[nf]) ++nf;
+      const u8 zero = 0;
+      const u32 pc = off(smp.pc), lr = off(smp.lr);
+      put(&smp.slot, 2);
+      put(&nf, 1);
+      put(&zero, 1);
+      put(&pc, 4);
+      put(&lr, 4);
+      for (u8 k = 0; k < nf; ++k) {
+        const u32 fr = off(smp.frames[k]);
+        put(&fr, 4);
+      }
+    }
+  }
+  std::fclose(f);
+}
+
 void Report(u64 elapsed_ticks, u64 tick_freq, u64 counters_last[kCounterCount],
             const char* mode) {
   const double seconds = double(elapsed_ticks) / double(tick_freq);
@@ -344,6 +417,7 @@ void Report(u64 elapsed_ticks, u64 tick_freq, u64 counters_last[kCounterCount],
   for (unsigned i = 0; i < kCounterCount; ++i) {
     counters_now[i] = g_counters[i].load(std::memory_order_relaxed);
   }
+  const double game_fps = seconds > 0.0 ? double(counters_now[0] - counters_last[0]) / seconds : 0.0;
 
   // CPU of each thread over the interval, as % of one core.
   std::vector<size_t> order;
@@ -606,6 +680,9 @@ void Report(u64 elapsed_ticks, u64 tick_freq, u64 counters_last[kCounterCount],
 
   std::vector<Sample> samples(g_samples, g_samples + g_sample_count);
   g_sample_count = 0;
+  if (!samples.empty()) {
+    WriteRawStacks(samples, order, seconds, game_fps);
+  }
   std::sort(samples.begin(), samples.end(),
             [](const Sample& a, const Sample& b) { return a.slot < b.slot; });
 
