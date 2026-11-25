@@ -27,6 +27,8 @@
 //                 in the game's order (it differs for the first two samples); a 1e-18 guard is added
 //                 from the third sample on. Runs on registers only when outputs overlap nothing it
 //                 reads; otherwise the recompiled function runs.
+//   sub_826A8068  the voice parameter graph's interpreter (node functions stay recompiled), with an
+//                 optional per-node-function measurement.
 //   sub_826CD528  scale: dst[i] = src[i] * gain. Aligned blocks of 64 use VMX (flush to zero), anything
 //                 else the scalar fmuls loop.
 //   sub_822B6A50  4-bit ADPCM block decoder (19 bytes -> 32 samples): two-tap predictor, each step a
@@ -36,6 +38,7 @@
 //
 // nfscarbon_audio_native = false puts the recompiled code back without a new NRO.
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <string>
@@ -631,6 +634,132 @@ extern "C" REX_FUNC(sub_826C4BE8) {
   g_bus.ticks += Ticks() - t0;
   ++g_bus.calls;
   MaybeReport();
+}
+
+// ---- The parameter graph (session 31) -------------------------------------------------------------
+// sub_826A8068 runs a voice's graph of small nodes: for each node a byte opcode picks one of ~40 node
+// functions from the table at 0x82B69EC8 (called with r3 = the voice's state), then the node's
+// connections copy words between slots of the state (or store the node's result, source -1); a 255
+// opcode ends the list. At crowded race starts the audio server uses 70-80 % of a core and this loop
+// (with the node functions the PGO build inlines into its caller) is its biggest item. Here the same
+// loop runs natively, the node functions still recompiled, with an optional measurement of which
+// nodes take the time (nfscarbon_audio_graph_stats) to pick the ones worth writing natively.
+REXCVAR_DEFINE_BOOL(nfscarbon_audio_graph_stats, true, "Carbon",
+                    "Log every 10 s how the audio server's parameter graph spends its time, per node "
+                    "function");
+
+namespace nfscarbon::audio_native::graph {
+constexpr uint32_t kOpTable = 0x82B69EC8u;
+struct Slot {
+  uint32_t addr = 0;
+  PPCFunc* fn = nullptr;
+  uint64_t calls = 0, ticks = 0;
+};
+Slot g_slots[256];
+uint64_t g_runs = 0, g_nodes = 0, g_copies = 0, g_ticks = 0, g_last = 0;
+
+void MaybeReport() {
+  using stats::Ticks;
+  const uint64_t now = Ticks();
+  if (!g_last) {
+    g_last = now;
+    return;
+  }
+  if (now - g_last < 10ull * 19200000ull) return;
+  const double secs = double(now - g_last) / 19200000.0;
+  uint64_t in_nodes = 0;
+  int order[256];
+  int n = 0;
+  for (int i = 0; i < 256; ++i) {
+    if (g_slots[i].calls) {
+      in_nodes += g_slots[i].ticks;
+      order[n++] = i;
+    }
+  }
+  std::sort(order, order + n, [](int a, int b) { return g_slots[a].ticks > g_slots[b].ticks; });
+  std::string top;
+  for (int k = 0; k < n && k < 12; ++k) {
+    const Slot& s = g_slots[order[k]];
+    top += fmt::format(" [op {} {:08X}: {} calls {:.1f} ms]", order[k], s.addr, s.calls,
+                       double(s.ticks) / 19200.0);
+  }
+  REXLOG_INFO("[audio] parameter graph in {:.1f} s: {} runs, {} nodes, {} copies, {:.0f} ms ({:.1f} % of a "
+              "core), {:.0f} ms of it in node functions | by node function:{}",
+              secs, g_runs, g_nodes, g_copies, double(g_ticks) / 19200.0,
+              double(g_ticks) / 19200.0 / (secs * 10.0), double(in_nodes) / 19200.0, top);
+  for (Slot& s : g_slots) s.calls = s.ticks = 0;
+  g_runs = g_nodes = g_copies = g_ticks = 0;
+  g_last = now;
+}
+
+// sub_826A8068(r3 = node list, r4 = state).
+template <bool kMeasure>
+void Run(PPCContext& ctx, uint8_t* base) {
+  using stats::Ticks;
+  const uint64_t t_start = kMeasure ? Ticks() : 0;
+  // The guest function keeps r29-r31 (savegprlr_29) and has a 112-byte frame the node functions
+  // are called under.
+  const uint64_t r29 = ctx.r29.u64, r30 = ctx.r30.u64, r31 = ctx.r31.u64;
+  const uint32_t sp = ctx.r1.u32;
+  const uint32_t frame = sp - 112;
+  Store32(base, frame, sp);
+  ctx.r1.u64 = frame;
+  uint32_t node = ctx.r3.u32;
+  uint32_t state = ctx.r4.u32;
+  uint64_t nodes = 0, copies = 0;
+  for (uint32_t op = base[node]; op != 255; op = base[node]) {
+    Slot& s = g_slots[op];
+    const uint32_t target = Load32(base, kOpTable + op * 4);
+    if (s.addr != target || !s.fn) [[unlikely]] {
+      s.addr = target;
+      s.fn = rex::runtime::ResolveIndirectFunction(target);
+    }
+    ctx.r3.u64 = state;
+    if constexpr (kMeasure) {
+      const uint64_t t0 = Ticks();
+      s.fn(ctx, base);
+      s.ticks += Ticks() - t0;
+      ++s.calls;
+      ++nodes;
+    } else {
+      s.fn(ctx, base);
+    }
+    const uint32_t result = ctx.r3.u32;
+    uint32_t link = node + 4;
+    for (uint32_t i = 0; i < base[node + 1]; ++i, link += 8) {
+      const uint32_t src = Load32(base, link);
+      const uint32_t dst = Load32(base, link + 4);
+      Store32(base, dst + state, src == 0xFFFFFFFFu ? result : Load32(base, src + state));
+    }
+    if constexpr (kMeasure) copies += base[node + 1];
+    node = link + 4;
+    state += Load32(base, link);
+  }
+  ctx.r1.u64 = sp;
+  ctx.r29.u64 = r29;
+  ctx.r30.u64 = r30;
+  ctx.r31.u64 = r31;
+  if constexpr (kMeasure) {
+    g_ticks += Ticks() - t_start;
+    g_nodes += nodes;
+    g_copies += copies;
+    ++g_runs;
+    MaybeReport();
+  }
+}
+}  // namespace nfscarbon::audio_native::graph
+
+extern "C" void __imp__sub_826A8068(PPCContext& __restrict ctx, uint8_t* base);
+extern "C" REX_FUNC(sub_826A8068) {
+  if (!REXCVAR_GET(nfscarbon_audio_native)) {
+    __imp__sub_826A8068(ctx, base);
+    return;
+  }
+  if (REXCVAR_GET(nfscarbon_audio_graph_stats)) {
+    nfscarbon::audio_native::graph::Run<true>(ctx, base);
+  } else {
+    nfscarbon::audio_native::graph::Run<false>(ctx, base);
+  }
 }
 
 extern "C" void __imp__sub_826CD8D0(PPCContext& __restrict ctx, uint8_t* base);
