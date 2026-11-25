@@ -1138,6 +1138,19 @@ void Renderer::ReadGpuStamps(uint32_t slot) {
   }
   stats_.gpu_total_s += total;
   ++stats_.gpu_frames;
+  // Frames are read in order: the gap from the previous frame's end to this one's start is time
+  // the GPU had nothing of ours to run (or ran someone else's submissions, e.g. the presenter's).
+  if (gpu_last_end_frame_ && frames_[slot].number == gpu_last_end_frame_ + 1 &&
+      results[0] > gpu_last_end_ts_) {
+    const double gap = double(results[0] - gpu_last_end_ts_) * ts_period_ns_ * 1e-9;
+    if (gap < 1.0) {
+      stats_.gpu_gap_s += gap;
+      stats_.gpu_gap_max_s = std::max(stats_.gpu_gap_max_s, gap);
+      ++stats_.gpu_gaps;
+    }
+  }
+  gpu_last_end_ts_ = results[n - 1];
+  gpu_last_end_frame_ = frames_[slot].number;
   gpu_ms_hist_.push_back(float(total * 1000.0));
   for (uint32_t i = 1; i < n; ++i) {
     double dt = double(results[i] - results[i - 1]) * ts_period_ns_ * 1e-9;
@@ -3707,10 +3720,13 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
         }
         REXGPU_INFO(
             "[carbon-gpu] gpu time per frame: total {:.1f} ms | scene passes {:.1f}, other passes {:.1f}, "
-            "resolves {:.1f}, present+tail {:.1f} (passes {:.0f})",
+            "resolves {:.1f}, present+tail {:.1f} (passes {:.0f}) | idle before the next frame {:.1f} "
+            "(worst {:.1f}, {} frames)",
             stats_.gpu_total_s * 1000.0 / g, stats_.gpu_tag_s[kTagScenePass] * 1000.0 / g,
             stats_.gpu_tag_s[kTagOtherPass] * 1000.0 / g, stats_.gpu_tag_s[kTagResolve] * 1000.0 / g,
-            stats_.gpu_tag_s[kTagEnd] * 1000.0 / g, stats_.gpu_passes / g);
+            stats_.gpu_tag_s[kTagEnd] * 1000.0 / g, stats_.gpu_passes / g,
+            stats_.gpu_gaps ? stats_.gpu_gap_s * 1000.0 / stats_.gpu_gaps : 0.0,
+            stats_.gpu_gap_max_s * 1000.0, stats_.gpu_gaps);
       }
     }
     if (REXCVAR_GET(carbon_gpu_stats)) {

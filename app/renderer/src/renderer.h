@@ -613,6 +613,8 @@ class Renderer {
   float ts_period_ns_ = 0.0f;
   PFN_vkCmdWriteTimestamp pfn_write_timestamp_ = nullptr;
   PFN_vkGetQueryPoolResults pfn_get_query_results_ = nullptr;
+  uint64_t gpu_last_end_ts_ = 0;      // GPU clock at the end of the last frame read
+  uint64_t gpu_last_end_frame_ = 0;   // its frame number
 
   // ---- State ----
   GpuSystem* system_ = nullptr;
@@ -733,6 +735,9 @@ class Renderer {
     uint64_t const_bytes_saved = 0;
     double gpu_total_s = 0, gpu_tag_s[5] = {};
     uint32_t gpu_frames = 0, gpu_passes = 0;
+    // GPU idle time between the end of one frame's commands and the start of the next one's.
+    double gpu_gap_s = 0, gpu_gap_max_s = 0;
+    uint32_t gpu_gaps = 0;
     uint32_t slow25 = 0, slow34 = 0, slow50 = 0;
     uint32_t skip[kSkipReasonCount] = {};
   } stats_;
