@@ -8,6 +8,8 @@
 // Control flow:
 //  - Shaders without jumps, calls or loops are emitted as straight code, each
 //    exec block guarded by its bool-constant or predicate condition.
+//  - Shaders whose only control flow is properly nested loops (no jumps, calls or
+//    returns, no end inside a loop) get structured GLSL loops.
 //  - Otherwise the control flow program becomes a `while (true) switch (pc)`
 //    state machine, one case per control flow instruction.
 
@@ -962,6 +964,60 @@ TranslatedShader Translator::Run() {
   }
   result_.has_complex_control_flow = complex;
 
+  // Loops alone (no jumps, calls or returns, loop_start/loop_end properly nested, the shader not
+  // ending inside a loop) become structured GLSL loops instead of the switch state machine. In
+  // the state machine every register is live around the dispatch loop and the code after the
+  // loop can't be optimized with the code before it; Carbon's scene shader F8942C71B35D8220 (one
+  // small texture loop) cost ~10x per draw what the straight-line shaders do.
+  bool structured = complex;
+  if (structured) {
+    std::vector<uint32_t> open;
+    for (uint32_t i = 0; i < cf.size() && structured; ++i) {
+      const auto& c = cf[i];
+      ControlFlowOpcode opc = c.opcode();
+      if (ucode::IsControlFlowOpcodeExec(opc)) {
+        if (ucode::DoesControlFlowOpcodeEndShader(opc)) {
+          if (!open.empty()) {
+            structured = false;
+          } else if (opc == ControlFlowOpcode::kExecEnd) {
+            break;  // Nothing jumps, so what follows can't run.
+          }
+        }
+        continue;
+      }
+      switch (opc) {
+        case ControlFlowOpcode::kLoopStart:
+          if (open.size() >= 4) {
+            structured = false;
+          } else {
+            open.push_back(i);
+          }
+          break;
+        case ControlFlowOpcode::kLoopEnd:
+          if (open.empty() || c.loop_end.address() != open.back() + 1 ||
+              cf[open.back()].loop_start.address() != i + 1) {
+            structured = false;
+          } else {
+            open.pop_back();
+          }
+          break;
+        case ControlFlowOpcode::kCondCall:
+        case ControlFlowOpcode::kReturn:
+        case ControlFlowOpcode::kCondJmp:
+          structured = false;
+          break;
+        default:
+          break;
+      }
+    }
+    if (!open.empty()) {
+      structured = false;
+    }
+  }
+  if (structured) {
+    complex = false;
+  }
+
   auto emit_exec = [&](const ControlFlowInstruction& c, bool in_switch) {
     ControlFlowOpcode opc = c.opcode();
     std::string cond;
@@ -998,11 +1054,46 @@ TranslatedShader Translator::Run() {
   if (!complex) {
     Line("do {");
     ++indent_;
+    uint32_t depth = 0;
     for (const auto& c : cf) {
-      if (ucode::IsControlFlowOpcodeExec(c.opcode())) {
+      ControlFlowOpcode opc = c.opcode();
+      if (ucode::IsControlFlowOpcodeExec(opc)) {
         if (emit_exec(c, false)) {
           break;
         }
+      } else if (structured && opc == ControlFlowOpcode::kLoopStart) {
+        // Same semantics as the state machine: aL saved, set from the loop constant unless it's a
+        // repeat, a count of 0 skips the body, and the outer aL comes back after the loop.
+        const auto& ls = c.loop_start;
+        uint32_t id = ls.loop_id();
+        uint32_t d = depth++;
+        Line("{");
+        ++indent_;
+        Line(fmt::format("int xe_al_outer{} = aL;", d));
+        Line(fmt::format("uint xe_lc{} = xe_draw.loops[{}][{}];", d, id >> 2, id & 3));
+        Line(fmt::format("int xe_n{} = int(xe_lc{} & 0xFFu);", d, d));
+        if (!ls.is_repeat()) {
+          Line(fmt::format("aL = int((xe_lc{} >> 8) & 0xFFu);", d));
+        }
+        Line(fmt::format("if (xe_n{} != 0) for (;;) {{", d));
+        ++indent_;
+      } else if (structured && opc == ControlFlowOpcode::kLoopEnd) {
+        const auto& le = c.loop_end;
+        uint32_t id = le.loop_id();
+        uint32_t d = --depth;
+        Line(fmt::format("xe_n{} -= 1;", d));
+        std::string cont = fmt::format("xe_n{} != 0", d);
+        if (le.is_predicated_break()) {
+          cont = fmt::format("{} && p0 != {}", cont, le.condition() ? "true" : "false");
+        }
+        Line(fmt::format("if (!({})) break;", cont));
+        Line(fmt::format("aL += bitfieldExtract(int(xe_draw.loops[{}][{}]), 16, 8);", id >> 2,
+                         id & 3));
+        --indent_;
+        Line("}");
+        Line(fmt::format("aL = xe_al_outer{};", d));
+        --indent_;
+        Line("}");
       }
     }
     --indent_;
