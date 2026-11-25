@@ -449,8 +449,14 @@ void Report(u64 elapsed_ticks, u64 tick_freq, u64 counters_last[kCounterCount],
      * intervals (20 s) near a whole core it goes back to the game's own priority, 0x3B, for the
      * rest of the session, so that thread gets the CPU again.
      */
+    /*
+     * Only when the output was silent too, as in that hang: with the mixer pinned to a core of its own
+     * (nfscarbon_audio_mixer_core) it legitimately uses the whole core at crowded race starts, and
+     * dropping it to 0x3B there took the requests left without data from 0-90 to 100-410 per 10 s.
+     */
+    const bool audio_silent = counters_now[26] == counters_last[26] && counters_now[27] != counters_last[27];
     if (std::strncmp(s.name, "RWAudioCore", 11) == 0) {
-      s.hot = s.cpu >= 95.0 ? s.hot + 1 : 0;
+      s.hot = (s.cpu >= 95.0 && audio_silent) ? s.hot + 1 : 0;
       if (s.hot >= 2 && !s.demoted) {
         s.demoted = true;
         const Result rc = svcSetThreadPriority(h, 0x3B);
