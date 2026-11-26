@@ -3463,13 +3463,19 @@ void Renderer::FlashRead(uint32_t slot) {
     }
     return true;
   };
+  // Mostly transparent flashes lift a bright race frame by little: 12 levels and 12 %.
   const auto above = [](double peak, double a, double b) {
     const double side = std::max(a, b);
-    return peak > side + 25.0 && peak > side * 1.3;
+    return peak > side + 12.0 && peak > side * 1.12;
   };
+  // A two-frame flash is also a one-frame peak against its second frame one read earlier: report
+  // each flash once.
+  if (flash_luma_frame_[2] && flash_luma_frame_[2] <= flash_last_report_) return;
   if (consecutive(1) && above(flash_luma_[2], flash_luma_[1], flash_luma_[3])) {
+    flash_last_report_ = flash_luma_frame_[3];
     FlashReport(flash_luma_frame_[2] - 1, 1, flash_luma_[2], std::max(flash_luma_[1], flash_luma_[3]));
   } else if (consecutive(0) && above(std::min(flash_luma_[1], flash_luma_[2]), flash_luma_[0], flash_luma_[3])) {
+    flash_last_report_ = flash_luma_frame_[3];
     FlashReport(flash_luma_frame_[1] - 1, 2, std::max(flash_luma_[1], flash_luma_[2]),
                 std::max(flash_luma_[0], flash_luma_[3]));
   }

@@ -632,6 +632,7 @@ class Renderer {
   // Brightness of the last four frames read back, oldest first (frame + 1, 0 = none).
   double flash_luma_[4] = {};
   uint64_t flash_luma_frame_[4] = {};
+  uint64_t flash_last_report_ = 0;  // frame + 1 of the last frame a report covered
   uint32_t flash_reports_ = 0;
   bool flash_watch_ = false;
   void FlashCopy(VkCommandBuffer cb, Texture* front);

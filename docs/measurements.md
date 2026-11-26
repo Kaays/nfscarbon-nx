@@ -271,3 +271,14 @@ Same day, same settings: 600p mid-race 25.5 fps (GPU 36 ms), 480p mid-race 27.4 
 starts 19-20 fps at every resolution (the game's preparation thread, ~90-100 % of core 0). Race GPU time fits
 ~11 ms per frame plus ~39 ms per million pixels. Audio: 29-95 missed packets per session (from hundreds per
 start before the inline XMA change).
+
+### Same settings, overclocked: CPU 1224 MHz, GPU 614.4 MHz, RAM 1600 MHz (2026-11-26)
+
+Race Wars and other races, 540p (render scale 75), everything else as above.
+
+| | fps | draws/frame | GPU ms p50 |
+|---|---|---|---|
+| crowded race starts | 23.6 | 3441 | 27.8 |
+| mid-race | 29.8 | 2022 | 24.5 |
+
+Against stock: crowded starts +4.5 fps (19.1 -> 23.6, the CPU clock: +20 %), mid-race at the 30 fps cap.
