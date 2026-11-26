@@ -254,3 +254,20 @@ Race Wars start, one around lap 2 of the last Race Wars, where the white flashes
 never filled (peak 227 MiB) and the flashes dropped to one per race, same frame rate. With the arena off (0) the
 flash still happened twice and the trailing shadow was unchanged, at 27.1 fps average in crowded windows (27.9
 with it on): the arena is neither the flash nor the shadow. 256 MiB is now the default.
+
+## Collector's Edition (collector_pal), stock clocks, 540p (2026-11-26)
+
+Reference for the clock profiles to come. CPU 1020 MHz, GPU 460.8 MHz, RAM 1331 MHz; render scale 75
+(960x540), car reflections full (6 faces), mirror full rate, scene detail 0.60, fps cap 30;
+`audio_xma_kicks_en_linea = 2`, `audio_switch_tramas_en_cola = 16`; native vector math on. Two Race Wars and
+a circuit. "Crowded" = 5 s intervals with 3000+ draws per frame (race starts), "mid" = the rest of the races.
+
+| | fps | draws/frame | GPU ms p50 |
+|---|---|---|---|
+| crowded race starts | 19.1 | 3369 | 36.9 |
+| mid-race | 27.9 | 2044 | 32.2 |
+
+Same day, same settings: 600p mid-race 25.5 fps (GPU 36 ms), 480p mid-race 27.4 fps (GPU 27 ms); crowded
+starts 19-20 fps at every resolution (the game's preparation thread, ~90-100 % of core 0). Race GPU time fits
+~11 ms per frame plus ~39 ms per million pixels. Audio: 29-95 missed packets per session (from hundreds per
+start before the inline XMA change).

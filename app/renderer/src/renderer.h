@@ -629,12 +629,14 @@ class Renderer {
   uint32_t flash_buffer_bytes_[kFramesInFlight] = {};
   uint64_t flash_frame_[kFramesInFlight] = {};  // frame whose rows the slot holds (0 = none)
   uint32_t flash_width_[kFramesInFlight] = {};
-  double flash_average_ = -1.0;
+  // Brightness of the last four frames read back, oldest first (frame + 1, 0 = none).
+  double flash_luma_[4] = {};
+  uint64_t flash_luma_frame_[4] = {};
   uint32_t flash_reports_ = 0;
   bool flash_watch_ = false;
   void FlashCopy(VkCommandBuffer cb, Texture* front);
   void FlashRead(uint32_t slot);
-  void FlashReport(uint64_t frame, double luma);
+  void FlashReport(uint64_t frame, uint32_t frames, double luma, double around);
   uint32_t ts_count_[kFramesInFlight] = {};
   uint8_t ts_tag_[kFramesInFlight][kMaxStamps] = {};
   bool ts_valid_[kFramesInFlight] = {};

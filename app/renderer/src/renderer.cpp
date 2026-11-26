@@ -136,9 +136,9 @@ REXCVAR_DEFINE_INT32(carbon_gpu_recorder_core, 1, "CarbonGPU",
                      "(read at start-up)")
     .range(-1, 3);
 REXCVAR_DEFINE_BOOL(carbon_gpu_flash_watch, false, "CarbonGPU",
-                    "Debug: read back a few rows of every presented frame and, when one is much "
-                    "brighter than the frames before it (the random white flash), log its draws next "
-                    "to the previous frame's");
+                    "Debug: read back a few rows of every presented frame and, when one or two frames "
+                    "are much brighter than the frames on both sides (the random white flash), log "
+                    "their draws next to the previous frame's");
 REXCVAR_DEFINE_BOOL(carbon_gpu_ps_timing, false, "CarbonGPU",
                     "Measurement: GPU time per pixel shader in the big scene passes, one frame in 30 "
                     "(logged with the pass statistics)");
@@ -3449,27 +3449,43 @@ void Renderer::FlashRead(uint32_t slot) {
   uint64_t sum = 0;
   for (uint32_t i = 0; i < n; ++i) sum += uint32_t(p[4 * i]) + p[4 * i + 1] + p[4 * i + 2];
   const double luma = double(sum) / (3.0 * n);  // 0-255, red and blue weigh the same
-  if (flash_average_ < 0.0) {
-    flash_average_ = luma;
-    return;
+  // A flash is a spike, one or two frames brighter than the frames on both sides; a fade or a cut to
+  // a brighter scene stays bright and is not one.
+  for (int i = 0; i < 3; ++i) {
+    flash_luma_[i] = flash_luma_[i + 1];
+    flash_luma_frame_[i] = flash_luma_frame_[i + 1];
   }
-  if (luma > flash_average_ + 30.0 && luma > flash_average_ * 1.35) {
-    FlashReport(frame, luma);
-    return;  // a flash does not move the average
+  flash_luma_[3] = luma;
+  flash_luma_frame_[3] = frame + 1;
+  const auto consecutive = [this](int from) {
+    for (int i = from; i < 3; ++i) {
+      if (!flash_luma_frame_[i] || flash_luma_frame_[i + 1] != flash_luma_frame_[i] + 1) return false;
+    }
+    return true;
+  };
+  const auto above = [](double peak, double a, double b) {
+    const double side = std::max(a, b);
+    return peak > side + 25.0 && peak > side * 1.3;
+  };
+  if (consecutive(1) && above(flash_luma_[2], flash_luma_[1], flash_luma_[3])) {
+    FlashReport(flash_luma_frame_[2] - 1, 1, flash_luma_[2], std::max(flash_luma_[1], flash_luma_[3]));
+  } else if (consecutive(0) && above(std::min(flash_luma_[1], flash_luma_[2]), flash_luma_[0], flash_luma_[3])) {
+    FlashReport(flash_luma_frame_[1] - 1, 2, std::max(flash_luma_[1], flash_luma_[2]),
+                std::max(flash_luma_[0], flash_luma_[3]));
   }
-  flash_average_ = flash_average_ * 0.8 + luma * 0.2;
 }
 
-void Renderer::FlashReport(uint64_t frame, double luma) {
+void Renderer::FlashReport(uint64_t frame, uint32_t frames, double luma, double around) {
   if (flash_reports_ >= 40) return;
   ++flash_reports_;
   const auto& now = flash_draws_[frame % kFlashFrames];
   const auto& before = flash_draws_[(frame + kFlashFrames - 1) % kFlashFrames];
   const bool have_now = flash_draws_frame_[frame % kFlashFrames] == frame;
   const bool have_before = frame > 0 && flash_draws_frame_[(frame - 1) % kFlashFrames] == frame - 1;
-  REXGPU_WARN("[carbon-gpu] flash: frame {} brightness {:.0f} (recent average {:.0f}), {} draws (frame "
-              "before: {})",
-              frame, luma, flash_average_, have_now ? now.size() : 0, have_before ? before.size() : 0);
+  REXGPU_WARN("[carbon-gpu] flash: frame {} ({} frame{}) brightness {:.0f} (frames around it {:.0f}), {} "
+              "draws (frame before: {})",
+              frame, frames, frames > 1 ? "s" : "", luma, around, have_now ? now.size() : 0,
+              have_before ? before.size() : 0);
   if (!have_now) return;
   struct Group {
     uint32_t draws = 0, before = 0;

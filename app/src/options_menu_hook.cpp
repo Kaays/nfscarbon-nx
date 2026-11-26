@@ -57,7 +57,7 @@ constexpr uint32_t kAfterId = 0x138D;    // Video screen: its last (only) row
 constexpr uint32_t kIdBase = 18900;      // our ids (id / 1000 = 18: the table's last slot)
 constexpr uint32_t kPadLeft = 0x9120409Eu;
 constexpr uint32_t kPadRight = 0xB5971BF1u;
-constexpr uint32_t kMaxValues = 6;
+constexpr uint32_t kMaxValues = 5;
 
 struct Value {
   const char* text;  // shown in the menu, and written in nfscarbon_options.txt
@@ -103,12 +103,11 @@ Row g_rows[] = {
       {"Performance (480p)", "carbon_gpu_render_scale=67"},
       // 75 %: every size the game uses comes out whole (1280x720 -> 960x540, its 256-row tiles ->
       // 192). Measured at stock clocks the GPU takes ~11 ms per frame plus ~39 ms per million
-      // pixels in a race: ~31 ms here, under the 33.3 ms of 30 fps, against ~36 ms at 600p.
+      // pixels in a race: ~31 ms here, under the 33.3 ms of 30 fps (600p, 36 ms, is gone).
       {"Balanced (540p)", "carbon_gpu_render_scale=75"},
-      {"Balanced (600p)", "carbon_gpu_render_scale=83"},
       {"Quality (720p)", "carbon_gpu_render_scale=100"},
       {"Ultra Quality (1080p)", "carbon_gpu_render_scale=150"}},
-     6, 4, 4},
+     5, 3, 3},
     // Upper limit of the frame rate (carbon_gpu_fps_cap, read by the renderer every frame, so it
     // takes effect at once). Only a ceiling: a heavy scene still runs as fast as the device can.
     // The Switch panel presents IMMEDIATE, so 40 is not held to 30/60 by vsync.
