@@ -22,7 +22,7 @@ carbon_gpu_fps_cap = 30
 carbon_gpu_vsync = false
 
 # Render resolution in percent of the game's 1280x720 (handheld: 100). 50 = 360p,
-# 67 = 480p, 83 = 600p, 100 = 720p, 150 = 1080p (drawn at 1080p, shown at 720p).
+# 67 = 480p, 75 = 540p, 100 = 720p, 150 = 1080p (drawn at 1080p, shown at 720p).
 # Also in the game: Options > Video > Resolution (saved in nfscarbon_options.txt,
 # which wins over this file; takes effect at the next start).
 carbon_gpu_render_scale = 100
