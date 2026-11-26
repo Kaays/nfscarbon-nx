@@ -635,6 +635,9 @@ class Renderer {
   uint64_t flash_last_report_ = 0;  // frame + 1 of the last frame a report covered
   uint32_t flash_reports_ = 0;
   bool flash_watch_ = false;
+  std::string watch_ps_text_;
+  uint64_t watch_ps_ = 0;
+  uint32_t watch_ps_left_ = 30;
   void FlashCopy(VkCommandBuffer cb, Texture* front);
   void FlashRead(uint32_t slot);
   void FlashReport(uint64_t frame, uint32_t frames, double luma, double around);

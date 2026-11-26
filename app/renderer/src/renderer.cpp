@@ -139,6 +139,9 @@ REXCVAR_DEFINE_BOOL(carbon_gpu_flash_watch, false, "CarbonGPU",
                     "Debug: read back a few rows of every presented frame and, when one or two frames "
                     "are much brighter than the frames on both sides (the random white flash), log "
                     "their draws next to the previous frame's");
+REXCVAR_DEFINE_STRING(carbon_gpu_watch_ps, "", "CarbonGPU",
+                      "Debug: pixel shader hash (16 hex digits). Every draw with it is traced in full "
+                      "(textures, pixel shader constants c0-c15, bools), up to 30 draws a session");
 REXCVAR_DEFINE_BOOL(carbon_gpu_ps_timing, false, "CarbonGPU",
                     "Measurement: GPU time per pixel shader in the big scene passes, one frame in 30 "
                     "(logged with the pass statistics)");
@@ -863,6 +866,10 @@ bool Renderer::BeginFrame() {
   f.number = frame_number_;
   frame_open_ = true;
   flash_watch_ = REXCVAR_GET(carbon_gpu_flash_watch);
+  if (const std::string& w = REXCVAR_GET(carbon_gpu_watch_ps); w != watch_ps_text_) {
+    watch_ps_text_ = w;
+    watch_ps_ = w.empty() ? 0 : std::strtoull(w.c_str(), nullptr, 16);
+  }
   if (flash_watch_) {
     flash_draws_[frame_number_ % kFlashFrames].clear();
     flash_draws_frame_[frame_number_ % kFlashFrames] = frame_number_;
@@ -2227,6 +2234,30 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
     double start = NowSeconds();
     ~FrameTimer() { total += NowSeconds() - start; }
   } frame_draw_timer{frame_draw_s_};
+  // carbon_gpu_watch_ps: trace this draw in full, as carbon_gpu_trace_frame would.
+  struct WatchTrace {
+    bool& tracing;
+    bool saved;
+    ~WatchTrace() { tracing = saved; }
+  } watch_trace{tracing_, tracing_};
+  if (ps && watch_ps_ && ps->hash == watch_ps_ && watch_ps_left_ > 0) {
+    --watch_ps_left_;
+    tracing_ = true;
+    REXGPU_WARN("[carbon-gpu] watch: frame {} ps {:016X} bools {:08X} {:08X} {:08X} {:08X}", frame_number_,
+                ps->hash, regs.values[kRegBoolConstants], regs.values[kRegBoolConstants + 1],
+                regs.values[kRegBoolConstants + 2], regs.values[kRegBoolConstants + 3]);
+    // c<n> as the dumped GLSL names it: register n, or float_constant_map[n] when packed.
+    const auto& t = ps->translated;
+    const bool packed = t.float_constants_compact && !t.float_constant_map.empty();
+    for (uint32_t c = 0; c < 16; ++c) {
+      if (packed && c >= t.float_constant_map.size()) break;
+      const uint32_t reg = packed ? t.float_constant_map[c] : c;
+      float v[4];
+      std::memcpy(v, &regs.values[kRegFloatConstants + 1024 + reg * 4], 16);
+      REXGPU_WARN("[carbon-gpu] watch:   c{} (register {}) = {:g} {:g} {:g} {:g}", c, reg, v[0], v[1], v[2],
+                  v[3]);
+    }
+  }
   // Phase clock: each Mark(p) charges the time since the previous mark to phase p.
   const bool profile = REXCVAR_GET(carbon_gpu_draw_profile);
   double phase_t = profile ? NowSeconds() : 0.0;
