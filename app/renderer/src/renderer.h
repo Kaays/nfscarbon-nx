@@ -637,7 +637,16 @@ class Renderer {
   bool flash_watch_ = false;
   std::string watch_ps_text_;
   uint64_t watch_ps_ = 0;
-  uint32_t watch_ps_left_ = 30;
+  // carbon_gpu_watch_ps groups the frames that use the shader into runs: the first draw of a
+  // run is traced in full, and a one-line summary of c0 and c1 follows when the run ends.
+  struct WatchRun {
+    uint64_t first = 0, last = 0;  // frame numbers; last == 0: no run open
+    uint32_t draws = 0;
+    float c0x_min = 0, c0x_max = 0;
+    float c1_first[4] = {}, c1_peak[4] = {}, c1_last[4] = {};
+  } watch_run_;
+  uint32_t watch_runs_ = 0;
+  void WatchRunEnd();
   void FlashCopy(VkCommandBuffer cb, Texture* front);
   void FlashRead(uint32_t slot);
   void FlashReport(uint64_t frame, uint32_t frames, double luma, double around);

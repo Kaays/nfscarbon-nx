@@ -870,6 +870,10 @@ bool Renderer::BeginFrame() {
     watch_ps_text_ = w;
     watch_ps_ = w.empty() ? 0 : std::strtoull(w.c_str(), nullptr, 16);
   }
+  if (watch_run_.last && frame_number_ > watch_run_.last + 1) {
+    WatchRunEnd();
+    watch_run_.last = 0;
+  }
   if (flash_watch_) {
     flash_draws_[frame_number_ % kFlashFrames].clear();
     flash_draws_frame_[frame_number_ % kFlashFrames] = frame_number_;
@@ -2240,13 +2244,39 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
     bool saved;
     ~WatchTrace() { tracing = saved; }
   } watch_trace{tracing_, tracing_};
-  if (ps && watch_ps_ && ps->hash == watch_ps_ && watch_ps_left_ > 0) {
-    --watch_ps_left_;
+  if (ps && watch_ps_ && ps->hash == watch_ps_) {
+    // c<n> as the dumped GLSL names it: register n, or float_constant_map[n] when packed.
+    const auto& t = ps->translated;
+    const bool packed = t.float_constants_compact && !t.float_constant_map.empty();
+    auto constant = [&](uint32_t c, float* v) {
+      const uint32_t reg = packed ? (c < t.float_constant_map.size() ? t.float_constant_map[c] : 0) : c;
+      std::memcpy(v, &regs.values[kRegFloatConstants + 1024 + reg * 4], 16);
+    };
+    float c0[4], c1[4];
+    constant(0, c0);
+    constant(1, c1);
+    WatchRun& r = watch_run_;
+    const bool fresh = !r.last || (frame_number_ != r.last && frame_number_ != r.last + 1);
+    if (fresh) {
+      if (r.last) WatchRunEnd();
+      r = {};
+      r.first = frame_number_;
+      r.c0x_min = r.c0x_max = c0[0];
+      std::memcpy(r.c1_first, c1, 16);
+      std::memcpy(r.c1_peak, c1, 16);
+    }
+    r.last = frame_number_;
+    ++r.draws;
+    r.c0x_min = std::min(r.c0x_min, c0[0]);
+    r.c0x_max = std::max(r.c0x_max, c0[0]);
+    if (c1[3] > r.c1_peak[3]) std::memcpy(r.c1_peak, c1, 16);
+    std::memcpy(r.c1_last, c1, 16);
+  }
+  if (ps && watch_ps_ && ps->hash == watch_ps_ && watch_run_.draws == 1 && watch_runs_ < 60) {
     tracing_ = true;
     REXGPU_WARN("[carbon-gpu] watch: frame {} ps {:016X} bools {:08X} {:08X} {:08X} {:08X}", frame_number_,
                 ps->hash, regs.values[kRegBoolConstants], regs.values[kRegBoolConstants + 1],
                 regs.values[kRegBoolConstants + 2], regs.values[kRegBoolConstants + 3]);
-    // c<n> as the dumped GLSL names it: register n, or float_constant_map[n] when packed.
     const auto& t = ps->translated;
     const bool packed = t.float_constants_compact && !t.float_constant_map.empty();
     for (uint32_t c = 0; c < 16; ++c) {
@@ -3418,6 +3448,21 @@ void Renderer::RecordPresent(VkCommandBuffer cb, VkImageView source, uint32_t so
   rec_.EndRendering(cb);
   TransitionImage(cb, dest, VK_IMAGE_ASPECT_COLOR_BIT, dest_layout,
                   rex::ui::vulkan::VulkanPresenter::kGuestOutputInternalLayout);
+}
+
+// carbon_gpu_watch_ps: one line per run of frames that drew the watched shader. For the
+// post-process shader 1AF363D5 the output is (scene + (c1.rgb - scene) * c1.w) * c0.x, so
+// c1 is the fade colour and amount and c0.x the brightness scale.
+void Renderer::WatchRunEnd() {
+  const WatchRun& r = watch_run_;
+  if (!r.last || watch_runs_ >= 200) return;
+  ++watch_runs_;
+  REXGPU_WARN(
+      "[carbon-gpu] watch: run frames {}-{} ({} frames, {} draws) c0.x {:g}..{:g} | c1 first {:g} {:g} {:g} {:g}"
+      " peak {:g} {:g} {:g} {:g} last {:g} {:g} {:g} {:g}",
+      r.first, r.last, r.last - r.first + 1, r.draws, r.c0x_min, r.c0x_max, r.c1_first[0], r.c1_first[1],
+      r.c1_first[2], r.c1_first[3], r.c1_peak[0], r.c1_peak[1], r.c1_peak[2], r.c1_peak[3], r.c1_last[0],
+      r.c1_last[1], r.c1_last[2], r.c1_last[3]);
 }
 
 // ---------------------------------------------------------------------------

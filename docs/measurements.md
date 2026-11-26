@@ -282,3 +282,15 @@ Race Wars and other races, 540p (render scale 75), everything else as above.
 | mid-race | 29.8 | 2022 | 24.5 |
 
 Against stock: crowded starts +4.5 fps (19.1 -> 23.6, the CPU clock: +20 %), mid-race at the 30 fps cap.
+
+### Same settings, overclocked: CPU 1326 MHz, GPU 691.2 MHz, RAM 1600 MHz (2026-11-26)
+
+Race Wars sessions, 540p (render scale 75), everything else as above.
+
+| | fps | draws/frame | GPU ms p50 |
+|---|---|---|---|
+| crowded race starts | 25.1 | 3467 | 26.4 |
+| mid-race | 30.0 | 2127 | 23.8 |
+
+Against 1224/614: crowded starts +1.5 fps (23.6 -> 25.1, CPU +8 %); mid-race holds the 30 fps cap with
+no dips.
