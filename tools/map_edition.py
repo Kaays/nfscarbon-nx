@@ -170,6 +170,33 @@ def map_data(usa_w, usa_n, other_w, other_n, d, code_delta):
     return best, f"data refs {votes[best]}/{n}"
 
 
+def reverse(args, usa_n, other_n):
+    """Addresses of the other edition -> the source edition: the same window search, the other way.
+    The expected offset comes from the nearest address of the existing map, when there is one."""
+    known = []
+    m = APP / "generated" / f"map_{args.source}_to_{args.region}.txt"
+    if m.is_file():
+        for line in m.read_text().splitlines():
+            parts = line.split()
+            if len(parts) >= 2 and not line.startswith("#") and parts[1] != "?":
+                known.append((int(parts[1], 16), int(parts[0], 16) - int(parts[1], 16)))
+    known.sort()
+    keys = [k for k, _ in known]
+    for text in args.reverse:
+        a = int(text, 16)
+        delta = 0
+        if known:
+            j = min(bisect.bisect_left(keys, a), len(keys) - 1)
+            delta = known[j][1]
+        r = find(other_n, usa_n, a, delta)
+        if r[0] is None and delta:
+            r = find(other_n, usa_n, a, 0)
+        if r[0] is None:
+            print(f"{args.region} 0x{a:08X} -> {args.source} ?           ({r[1]})")
+        else:
+            print(f"{args.region} 0x{a:08X} -> {args.source} 0x{r[0]:08X} ({r[1]})")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--region", required=True, help="other edition (pal, ...)")
@@ -178,6 +205,9 @@ def main():
     ap.add_argument("--usa", help="image of the source edition (default assets/guest_image_<from>.bin)")
     ap.add_argument("--other", help="default: assets/guest_image_<region>.bin")
     ap.add_argument("-o", "--output", help="default: app/generated/map_<from>_to_<region>.txt")
+    ap.add_argument("--reverse", nargs="+", metavar="ADDR",
+                    help="look these addresses of the other edition (e.g. from its console profile) up "
+                         "in the source edition and print them; writes nothing")
     args = ap.parse_args()
     args.usa = args.usa or str(ROOT / f"assets/guest_image_{args.source}.bin")
     other_path = Path(args.other or ROOT / f"assets/guest_image_{args.region}.bin")
@@ -187,6 +217,9 @@ def main():
 
     usa_w, usa_n = load(args.usa)
     other_w, other_n = load(other_path)
+    if args.reverse:
+        reverse(args, usa_n, other_n)
+        return
     size = len(usa_n) * 4
     source_addrs = usa_addresses() if args.source == "usa" else edition_addresses(args.source)
     addrs = {a: w for a, w in source_addrs.items() if a % 4 == 0 and BASE <= a < BASE + size}
