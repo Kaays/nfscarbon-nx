@@ -1831,7 +1831,18 @@ void Renderer::ComputeViewport(const RegisterFile& regs, uint32_t rt_width, uint
   if (res_scale_ != 1.0f) {
     // Guest pixels to host pixels; the NDC transform above is scale-free.
     const float s = res_scale_;
-    viewport = {0.0f, 0.0f, w * s, h * s, 0.0f, 1.0f};
+    // Whole host pixels. With w * s fractional (a 256-row tile at 67 %: 171.52), the driver clips
+    // fragments at the truncated viewport edge (NVK: 171), so the last row inside the scissor was
+    // never drawn: the frontend renders its 3D scene in 1280x256 tiles and that row showed as a
+    // black line across the career menu at row 171 (480p) or 212 (600p). The NDC transform is
+    // rebuilt for the guest extent this viewport covers, so host = guest * s still holds exactly.
+    const float vw = std::ceil(w * s), vh = std::ceil(h * s);
+    const float ew = vw / s, eh = vh / s;
+    c.ndc_scale[0] = sx * 2.0f / ew;
+    c.ndc_scale[1] = sy * 2.0f / eh;
+    c.ndc_offset[0] = (ox + win_x + half) * 2.0f / ew - 1.0f;
+    c.ndc_offset[1] = (oy + win_y + half) * 2.0f / eh - 1.0f;
+    viewport = {0.0f, 0.0f, vw, vh, 0.0f, 1.0f};
     int32_t max_x = int32_t(Scaled(rt_width)), max_y = int32_t(Scaled(rt_height));
     int32_t hx0 = std::min(int32_t(std::floor(x0 * s)), max_x);
     int32_t hy0 = std::min(int32_t(std::floor(y0 * s)), max_y);
