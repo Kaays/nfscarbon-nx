@@ -607,6 +607,34 @@ class Renderer {
   uint32_t ps_frames_ = 0;
   void PsStamp(uint64_t hash);
   void ReadPsStamps(uint32_t slot);
+  // carbon_gpu_flash_watch: finds the random one-frame white flash. A few rows of every presented
+  // frame are read back; a frame much brighter than the ones before it is logged with its draws
+  // next to the previous frame's, grouped by pass, shaders and blend, so the odd ones stand out.
+  struct FlashDraw {
+    uint64_t vs = 0, ps = 0;
+    uint32_t target = 0;  // color 0: EDRAM base | pitch << 12 | format << 26 (0 = depth only)
+    uint32_t size = 0;    // pass width | height << 16
+    uint32_t count = 0;   // vertices or indices
+    uint32_t blend = 0;   // RB_BLENDCONTROL0 (0 when not blending)
+    uint32_t scissor = 0; // host pixels
+    uint8_t prim = 0;
+  };
+  static constexpr uint32_t kFlashFrames = 8;
+  static constexpr uint32_t kFlashRows = 16;
+  std::vector<FlashDraw> flash_draws_[kFlashFrames];
+  uint64_t flash_draws_frame_[kFlashFrames] = {};
+  VkBuffer flash_buffer_[kFramesInFlight] = {};
+  VmaAllocation flash_allocation_[kFramesInFlight] = {};
+  void* flash_mapped_[kFramesInFlight] = {};
+  uint32_t flash_buffer_bytes_[kFramesInFlight] = {};
+  uint64_t flash_frame_[kFramesInFlight] = {};  // frame whose rows the slot holds (0 = none)
+  uint32_t flash_width_[kFramesInFlight] = {};
+  double flash_average_ = -1.0;
+  uint32_t flash_reports_ = 0;
+  bool flash_watch_ = false;
+  void FlashCopy(VkCommandBuffer cb, Texture* front);
+  void FlashRead(uint32_t slot);
+  void FlashReport(uint64_t frame, double luma);
   uint32_t ts_count_[kFramesInFlight] = {};
   uint8_t ts_tag_[kFramesInFlight][kMaxStamps] = {};
   bool ts_valid_[kFramesInFlight] = {};

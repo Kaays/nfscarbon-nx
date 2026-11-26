@@ -100,14 +100,12 @@ worth knowing: user clip planes (now supported, but the game does not use them t
 
 ## Still open
 
-- **Race Wars start at 18-22 FPS** (whole pack on screen, ~6000 draws). The game is CPU-bound: lower resolution
-  does not help. Ideas not done: the retail single-pass render mode (`carbon_single_pass`, gave nfsmw-nx most of its
-  speed; off until checked), fewer guest-side draws.
-- **Rare crashes in police chases** (seen twice in Europe (Nordic)): the game finds an object it expects missing.
-  `protect_zero = false` lets its null-store traps carry on; no root cause.
-- **Rare one-frame white flash** (a stray giant polygon) and a few black frames at some race starts. The same flash
-  exists in nfsmw-nx.
-- **Lips behind the voice** in in-engine cutscenes when the frame rate drops below 30 (seen once, not confirmed).
+- **Crowded race starts at 19-20 FPS at stock clocks** (collector_pal, 540p; 28-30 mid-race). The game's preparation
+  thread is the limit and its time is spread over hundreds of functions: the hottest leaf functions are native now
+  (audio, vector math), the rest gives a few tenths of an FPS each. Lower resolution or overclocking is the answer.
+- **Rare one-frame white flash** in races (mostly transparent, random places). `carbon_gpu_flash_watch = true` logs
+  the draws of a frame much brighter than the ones before it next to the previous frame's ("flash:" lines).
+- Black frames at race starts: seen long ago, not since.
 - **Switch video clips drop 2-5 FPS on battery** ([#4](https://github.com/Kaays/nfscarbon-nx/issues/4)): the game
   looks fine but the saved clip stutters; on the charger the clip is smooth (CPU 1683 / GPU 921 / RAM 1600). Likely
   lead: the fourth CPU core the port uses is the one the system keeps for itself, capture and encoding included, and

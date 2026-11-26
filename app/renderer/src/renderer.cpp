@@ -12,6 +12,8 @@
 #include <chrono>
 #include <cmath>
 #include <fstream>
+#include <map>
+#include <string>
 #include <thread>
 #include <type_traits>
 #if defined(__ANDROID__)
@@ -133,6 +135,10 @@ REXCVAR_DEFINE_INT32(carbon_gpu_recorder_core, 1, "CarbonGPU",
                      "Switch: pin the Vulkan recorder thread to this core (0-3); -1 = let Horizon choose "
                      "(read at start-up)")
     .range(-1, 3);
+REXCVAR_DEFINE_BOOL(carbon_gpu_flash_watch, false, "CarbonGPU",
+                    "Debug: read back a few rows of every presented frame and, when one is much "
+                    "brighter than the frames before it (the random white flash), log its draws next "
+                    "to the previous frame's");
 REXCVAR_DEFINE_BOOL(carbon_gpu_ps_timing, false, "CarbonGPU",
                     "Measurement: GPU time per pixel shader in the big scene passes, one frame in 30 "
                     "(logged with the pass statistics)");
@@ -805,6 +811,7 @@ bool Renderer::BeginFrame() {
     f.submitted = false;
     ReadGpuStamps(frame_index_);
     ReadPsStamps(frame_index_);
+    FlashRead(frame_index_);
   }
   if (arena_reset_pending_) {
     // The arena is full: wait until no frame in flight reads it, then start over.
@@ -855,6 +862,11 @@ bool Renderer::BeginFrame() {
   }
   f.number = frame_number_;
   frame_open_ = true;
+  flash_watch_ = REXCVAR_GET(carbon_gpu_flash_watch);
+  if (flash_watch_) {
+    flash_draws_[frame_number_ % kFlashFrames].clear();
+    flash_draws_frame_[frame_number_ % kFlashFrames] = frame_number_;
+  }
   tracing_ = (REXCVAR_GET(carbon_gpu_trace_frame) > 0 &&
               frame_number_ == uint64_t(REXCVAR_GET(carbon_gpu_trace_frame))) ||
              (REXCVAR_GET(carbon_gpu_trace_interval) > 0 &&
@@ -2990,6 +3002,20 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
         scissor.extent.width, scissor.extent.height, consts.vtx[0], consts.ndc_scale[0],
         consts.ndc_scale[1], consts.ndc_offset[0], consts.ndc_offset[1]);
   }
+  if (flash_watch_) {
+    FlashDraw d;
+    d.vs = vs->hash;
+    d.ps = ps ? ps->hash : 0;
+    if (const RenderTarget* c0 = pass.color[0]) {
+      d.target = (c0->edram_base & 0xFFFu) | ((c0->pitch & 0x3FFFu) << 12) | ((c0->guest_format & 0xFu) << 26);
+    }
+    d.size = (pass.width & 0xFFFFu) | (pass.height << 16);
+    d.count = info.index_count;
+    d.blend = (pass.color[0] && key.blend[0][0]) ? regs[kBlendControlRegs[0]] : 0;
+    d.scissor = scissor.extent.width * scissor.extent.height;
+    d.prim = uint8_t(info.primitive_type);
+    flash_draws_[frame_number_ % kFlashFrames].push_back(d);
+  }
   Mark(5);  // constants
   upload_kind_ = 4;
   // ---- Record ----
@@ -3363,6 +3389,124 @@ void Renderer::RecordPresent(VkCommandBuffer cb, VkImageView source, uint32_t so
                   rex::ui::vulkan::VulkanPresenter::kGuestOutputInternalLayout);
 }
 
+// ---------------------------------------------------------------------------
+// carbon_gpu_flash_watch
+// ---------------------------------------------------------------------------
+
+void Renderer::FlashCopy(VkCommandBuffer cb, Texture* front) {
+  const uint32_t slot = frame_index_;
+  const uint32_t w = front->width, h = front->height;
+  const uint32_t bytes = w * 4 * kFlashRows;
+  if (h < kFlashRows || w == 0) return;
+  if (bytes > flash_buffer_bytes_[slot]) {
+    if (flash_buffer_[slot]) {
+      VkBuffer old = flash_buffer_[slot];
+      VmaAllocation old_alloc = flash_allocation_[slot];
+      DeferDestroy([this, old, old_alloc]() { vmaDestroyBuffer(allocator_, old, old_alloc); });
+      flash_buffer_[slot] = VK_NULL_HANDLE;
+      flash_buffer_bytes_[slot] = 0;
+    }
+    VkBufferCreateInfo bci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bci.size = bytes;
+    bci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    VmaAllocationCreateInfo aci = {};
+    aci.usage = VMA_MEMORY_USAGE_AUTO;
+    aci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    VmaAllocationInfo ai;
+    if (vmaCreateBuffer(allocator_, &bci, &aci, &flash_buffer_[slot], &flash_allocation_[slot], &ai) !=
+        VK_SUCCESS) {
+      flash_buffer_[slot] = VK_NULL_HANDLE;
+      return;
+    }
+    flash_mapped_[slot] = ai.pMappedData;
+    flash_buffer_bytes_[slot] = bytes;
+  }
+  // Rows spread over the frame (a flash covers most of it).
+  VkBufferImageCopy regions[kFlashRows] = {};
+  for (uint32_t k = 0; k < kFlashRows; ++k) {
+    regions[k].bufferOffset = VkDeviceSize(k) * w * 4;
+    regions[k].imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    regions[k].imageOffset = {0, int32_t((2 * k + 1) * h / (2 * kFlashRows)), 0};
+    regions[k].imageExtent = {w, 1, 1};
+  }
+  TransitionImage(cb, front->image, VK_IMAGE_ASPECT_COLOR_BIT, front->layout,
+                  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+  rec_.CopyImageToBuffer(cb, front->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, flash_buffer_[slot],
+                         kFlashRows, regions);
+  TransitionImage(cb, front->image, VK_IMAGE_ASPECT_COLOR_BIT, front->layout,
+                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  flash_frame_[slot] = frame_number_ + 1;
+  flash_width_[slot] = w;
+}
+
+void Renderer::FlashRead(uint32_t slot) {
+  if (!flash_frame_[slot] || !flash_buffer_[slot]) return;
+  const uint64_t frame = flash_frame_[slot] - 1;
+  flash_frame_[slot] = 0;
+  vmaInvalidateAllocation(allocator_, flash_allocation_[slot], 0, VK_WHOLE_SIZE);
+  const uint8_t* p = static_cast<const uint8_t*>(flash_mapped_[slot]);
+  const uint32_t n = flash_width_[slot] * kFlashRows;
+  uint64_t sum = 0;
+  for (uint32_t i = 0; i < n; ++i) sum += uint32_t(p[4 * i]) + p[4 * i + 1] + p[4 * i + 2];
+  const double luma = double(sum) / (3.0 * n);  // 0-255, red and blue weigh the same
+  if (flash_average_ < 0.0) {
+    flash_average_ = luma;
+    return;
+  }
+  if (luma > flash_average_ + 30.0 && luma > flash_average_ * 1.35) {
+    FlashReport(frame, luma);
+    return;  // a flash does not move the average
+  }
+  flash_average_ = flash_average_ * 0.8 + luma * 0.2;
+}
+
+void Renderer::FlashReport(uint64_t frame, double luma) {
+  if (flash_reports_ >= 40) return;
+  ++flash_reports_;
+  const auto& now = flash_draws_[frame % kFlashFrames];
+  const auto& before = flash_draws_[(frame + kFlashFrames - 1) % kFlashFrames];
+  const bool have_now = flash_draws_frame_[frame % kFlashFrames] == frame;
+  const bool have_before = frame > 0 && flash_draws_frame_[(frame - 1) % kFlashFrames] == frame - 1;
+  REXGPU_WARN("[carbon-gpu] flash: frame {} brightness {:.0f} (recent average {:.0f}), {} draws (frame "
+              "before: {})",
+              frame, luma, flash_average_, have_now ? now.size() : 0, have_before ? before.size() : 0);
+  if (!have_now) return;
+  struct Group {
+    uint32_t draws = 0, before = 0;
+    uint64_t count = 0;
+    uint32_t scissor = 0;
+  };
+  const auto key = [](const FlashDraw& d) {
+    return fmt::format("target {:08X} {}x{} vs {:016X} ps {:016X} blend {:08X} prim {:02X}", d.target,
+                       d.size & 0xFFFF, d.size >> 16, d.vs, d.ps, d.blend, uint32_t(d.prim));
+  };
+  std::map<std::string, Group> groups;
+  for (const FlashDraw& d : now) {
+    Group& g = groups[key(d)];
+    ++g.draws;
+    g.count += d.count;
+    g.scissor = std::max(g.scissor, d.scissor);
+  }
+  if (have_before) {
+    for (const FlashDraw& d : before) ++groups[key(d)].before;
+  }
+  uint32_t lines = 0;
+  for (const auto& [k, g] : groups) {
+    if (g.draws > g.before && lines < 60) {
+      ++lines;
+      REXGPU_WARN("[carbon-gpu] flash:   {} draws (frame before {}) count {} widest scissor {} px | {}",
+                  g.draws, g.before, g.count, g.scissor, k);
+    }
+  }
+  for (const auto& [k, g] : groups) {
+    if (g.before > g.draws && lines < 80) {
+      ++lines;
+      REXGPU_WARN("[carbon-gpu] flash:   missing: {} draws in the frame before, {} here | {}", g.before,
+                  g.draws, k);
+    }
+  }
+}
+
 void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t width,
                     uint32_t height, const GammaRamp& gamma) {
   if (g_paused.load(std::memory_order_acquire)) {
@@ -3447,6 +3591,10 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
   const float source_scale = front ? front->res_scale : 1.0f;
   uint32_t out_w = width ? width : (front ? front->guest.width : source_w);
   uint32_t out_h = height ? height : (front ? front->guest.height : source_h);
+
+  if (flash_watch_ && front && front->format.host_format == VK_FORMAT_R8G8B8A8_UNORM) {
+    FlashCopy(frame().cb, front);
+  }
 
   // Frame dump (debugging): copy the front buffer to a readback buffer.
   VkBuffer dump_buffer = VK_NULL_HANDLE;
