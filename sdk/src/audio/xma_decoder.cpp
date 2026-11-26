@@ -55,6 +55,12 @@ REXCVAR_DECLARE(bool, audio_diag_prioridad_critica);  // definida en audio_syste
 #else
 #define REX_XMA_EN_TRABAJADOR_POR_DEFECTO 0
 #endif
+#if REX_PLATFORM_SWITCH
+extern "C" bool RexSwitchPinCurrentThreadToCore(int core);  // sdk/src/core/threading_switch.cpp
+#endif
+REXCVAR_DEFINE_INT32(audio_xma_trabajador_nucleo, -1, "Audio",
+                     "Switch: fija el hilo XMA Decoder a ese nucleo (0-3) al arrancar; -1 = sin fijar, como "
+                     "hasta ahora");
 REXCVAR_DEFINE_INT32(audio_xma_en_trabajador, REX_XMA_EN_TRABAJADOR_POR_DEFECTO, "Audio",
                      "Quien descodifica el XMA al llegar un kick (XMAEnableContext): 0 = el hilo que lo pide, "
                      "como hasta ahora; 1 = el hilo XMA Decoder, que en la Switch va a 0x2B y no lo preempta "
@@ -325,6 +331,12 @@ void InformarXma() {
 }  // namespace
 
 void XmaDecoder::WorkerThreadMain() {
+#if REX_PLATFORM_SWITCH
+  if (const int32_t nucleo = REXCVAR_GET(audio_xma_trabajador_nucleo); nucleo >= 0) {
+    const bool fijado = RexSwitchPinCurrentThreadToCore(int(nucleo));
+    REXLOG_INFO("[xma] XMA Decoder {} al nucleo {}", fijado ? "fijado" : "NO fijado", nucleo);
+  }
+#endif
   while (worker_running_) {
     // Okay, let's loop through XMA contexts to find ones we need to decode!
     bool did_work = false;

@@ -51,6 +51,13 @@ extern "C" {
 // Credits for most of this code goes to:
 // https://github.com/koolkdev/libertyv/blob/master/libav_wrapper/xma2dec.c
 
+// nfscarbon-nx: mode 3 of audio_xma_en_trabajador. 16 since the cold-start fix (d443605), where the
+// failure was the first music decode of a new stream. At a sprint start on stock clocks the mixer spent
+// 1.6-1.9 s of every 10 s on them (10-12 thousand new streams), ran at 84-91 % of its core and missed
+// 128-285 packets per 10 s even with a 16-frame output queue.
+REXCVAR_DEFINE_INT32(audio_xma_kicks_en_linea, 16, "Audio",
+                     "Con audio_xma_en_trabajador = 3: kicks de cada sonido nuevo que se descodifican en el hilo "
+                     "que los pide (el mezclador del juego) antes de pasar al trabajador XMA Decoder (0-64)");
 REXCVAR_DEFINE_INT32(audio_volcado_xma_s, 0, "Audio",
                      "Diagnostico: segundos de cada contexto XMA que se guardan en "
                      "xma_<contexto>_tramas/salida_<hz>.wav junto al ejecutable; 0 = nada");
@@ -539,7 +546,8 @@ void XmaContext::ResetDecoderState() {
   current_frame_remaining_subframes_ = 0;
   loop_frame_output_limit_ = 0;
   loop_start_skip_pending_ = false;
-  inline_decodes_left_.store(kInlineDecodesPerStream, std::memory_order_relaxed);
+  inline_decodes_left_.store(uint32_t(std::clamp<int32_t>(REXCVAR_GET(audio_xma_kicks_en_linea), 0, 64)),
+                             std::memory_order_relaxed);
 }
 
 void XmaContext::Disable() {
