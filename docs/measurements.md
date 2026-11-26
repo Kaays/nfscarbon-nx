@@ -294,3 +294,15 @@ Race Wars sessions, 540p (render scale 75), everything else as above.
 
 Against 1224/614: crowded starts +1.5 fps (23.6 -> 25.1, CPU +8 %); mid-race holds the 30 fps cap with
 no dips.
+
+### Same clocks (CPU 1326 / GPU 691.2 / RAM 1600), 720p (2026-11-26)
+
+Race Wars, render scale 100 (1280x720), everything else as above.
+
+| | fps | draws/frame | GPU ms p50 |
+|---|---|---|---|
+| crowded race starts | 23.5 | 3450 | 38.5 |
+| mid-race | 26.4 | 2062 | 37.6 |
+
+GPU-bound at 720p (the CPU waits 16 ms a frame on the GPU fence mid-race): against 540p at the same clocks,
+-1.6 fps at crowded starts and -3.6 fps mid-race.

@@ -13,6 +13,7 @@
 #include <climits>
 #include <ctime>
 
+#include <rex/cvar.h>
 #include <rex/system/gpu_plugin.h>
 #include <rex/system/xmemory.h>
 
@@ -34,6 +35,12 @@
 // counter instead of spinning while D3D waits for ring space. Same name as
 // the SDK plugin exports, so the hook finds either renderer.
 extern "C" REX_GPU_PLUGIN_EXPORT std::atomic<uint32_t> nfsmw_cp_rptr_seq{0};
+
+// Samples an occlusion query reports when it ends (the renderer does not count them). The game
+// uses the result for light glows; 0 makes every queried object count as hidden (test switch).
+REXCVAR_DEFINE_INT32(carbon_gpu_query_samples, 1000, "CarbonGPU",
+                     "Samples reported by every finished occlusion query (0 = all hidden)")
+    .range(0, 1000000);
 
 namespace carbon::gpu {
 
@@ -669,9 +676,12 @@ bool CommandProcessor::ExecuteType3(Reader& r, uint32_t packet) {
         bool ended = counts[4] == kQueryFinished || counts[5] == kQueryFinished ||
                      counts[2] == kQueryFinished || counts[3] == kQueryFinished;
         std::memset(counts, 0, sizeof(uint32_t) * 8);
+        renderer_->NoteQuery(ended);
         if (ended) {
-          counts[4] = 1000;
-          counts[0] = 1000;
+          // carbon_gpu_query_samples: 0 reports every queried object as hidden (a test switch).
+          const uint32_t n = uint32_t(std::max(0, REXCVAR_GET(carbon_gpu_query_samples)));
+          counts[4] = n;
+          counts[0] = n;
         }
       }
     } break;

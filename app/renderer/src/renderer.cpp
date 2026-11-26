@@ -971,6 +971,7 @@ void Renderer::EndFrame(bool present, const std::function<void(VkCommandBuffer)>
   frame_open_ = false;
   frame_index_ = (frame_index_ + 1) % kFramesInFlight;
   ++frame_number_;
+  query_begin_[frame_number_ % kFlashFrames] = query_end_[frame_number_ % kFlashFrames] = 0;
 }
 
 bool Renderer::AcquireChunk() {
@@ -3587,6 +3588,13 @@ void Renderer::FlashReport(uint64_t frame, uint32_t frames, double luma, double 
   }
   if (have_before) {
     for (const FlashDraw& d : before) ++groups[key(d)].before;
+  }
+  {
+    auto q = [&](uint64_t f) {
+      return fmt::format("{} begun, {} ended", query_begin_[f % kFlashFrames], query_end_[f % kFlashFrames]);
+    };
+    REXGPU_WARN("[carbon-gpu] flash:   occlusion queries: {} | frame before: {} | 2 before: {}", q(frame),
+                q(frame + kFlashFrames - 1), q(frame + kFlashFrames - 2));
   }
   uint32_t lines = 0;
   for (const auto& [k, g] : groups) {
