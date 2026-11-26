@@ -4,6 +4,7 @@
 # (tools/map_edition.py finds the addresses, tools/region_sources.py rewrites the sources); a source with
 # an address not found there is left out and its hooks stay off for that edition.
 src/audio_native.cpp
+src/math_native.cpp
 src/audio_server_hook.cpp
 src/audio_thread_hook.cpp
 src/frame_handoff_hook.cpp

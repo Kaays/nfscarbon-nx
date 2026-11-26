@@ -37,6 +37,8 @@ set(NFSCARBON_SOURCES
     src/audio_server_hook.cpp
     # Native versions of the audio server's hottest loops (gain sum, filter, resampler).
     src/audio_native.cpp
+    # Native point transform and 4x4 matrix product (the game's vector math, same results).
+    src/math_native.cpp
     # Optional scene detail trim: scales the projected object size the game's LOD test sees.
     src/lod_bias_hook.cpp
     # Videos (cutscenes and the in-race picture-in-picture faces) through FFmpeg's WMV3 decoder.
