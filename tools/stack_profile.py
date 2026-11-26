@@ -27,6 +27,7 @@ import collections
 import os
 import struct
 import subprocess
+import sys
 
 
 def load_symbols(elf):
@@ -97,6 +98,9 @@ def main():
     ap.add_argument("--focus")
     ap.add_argument("--graph", action="store_true")
     ap.add_argument("--graph-min", type=float, default=1.0)
+    ap.add_argument("--order-out", metavar="LD",
+                    help="also write a linker order file (hottest functions first) from every sample of "
+                         "every interval and thread, e.g. app/function_order_collector_pal.ld")
     args = ap.parse_args()
 
     addrs, names = load_symbols(args.elf)
@@ -118,7 +122,15 @@ def main():
                                                   "edges": collections.Counter(),
                                                   "cpu": [], "name": ""})
     used_intervals = 0
+    order_weight = collections.Counter()
     for (secs, fps, threads), samples in read_samples(args.bin):
+        if args.order_out:
+            # Every sample counts here, whatever the fps filter: menus and races alike.
+            for slot, pc, lr, frames in samples:
+                stack = {func(pc)} | {func(a) for a in frames}
+                for f in stack:
+                    if f:
+                        order_weight[f[len("__imp__"):] if f.startswith("__imp__") else f] += 1
         if args.fps_max is not None and fps > args.fps_max:
             continue
         if args.fps_min is not None and fps < args.fps_min:
@@ -198,6 +210,11 @@ def main():
     open(dst, "w", encoding="utf-8").write(text)
     print(text)
     print(f"written {dst}")
+    if args.order_out:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import hot_functions
+        n, game = hot_functions.write_order(order_weight, args.order_out)
+        print(f"written {args.order_out}: {n} sections, {game} game functions")
 
 
 if __name__ == "__main__":

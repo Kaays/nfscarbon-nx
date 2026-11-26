@@ -168,11 +168,17 @@ if(REXGLUE_PLATFORM_SWITCH)
     # Race Wars, Canyon and the menus; tools/hot_functions.py). Tens of MB of code against the A57's
     # 48 KB instruction cache and small TLB: scattered hot code walks the page tables on far jumps.
     # It only moves functions. Needs binutils 2.43+ (--section-ordering-file).
+    # Each edition has its own function names, so its own file: function_order_<region>.ld
+    # (tools/stack_profile.py --order-out); function_order.ld (USA) otherwise.
     option(NFSCARBON_FUNCTION_ORDER "Group the hot functions at the start of .text" ON)
-    if(NFSCARBON_FUNCTION_ORDER AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/function_order.ld")
-        target_link_options(nfscarbon PRIVATE
-            "-Wl,--section-ordering-file,${CMAKE_CURRENT_SOURCE_DIR}/function_order.ld")
-        set_property(TARGET nfscarbon APPEND PROPERTY LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/function_order.ld")
+    set(NFSCARBON_ORDER_FILE "${CMAKE_CURRENT_SOURCE_DIR}/function_order_${NFSCARBON_REGION}.ld")
+    if(NOT EXISTS "${NFSCARBON_ORDER_FILE}")
+        set(NFSCARBON_ORDER_FILE "${CMAKE_CURRENT_SOURCE_DIR}/function_order.ld")
+    endif()
+    if(NFSCARBON_FUNCTION_ORDER AND EXISTS "${NFSCARBON_ORDER_FILE}")
+        message(STATUS "Function order: ${NFSCARBON_ORDER_FILE}")
+        target_link_options(nfscarbon PRIVATE "-Wl,--section-ordering-file,${NFSCARBON_ORDER_FILE}")
+        set_property(TARGET nfscarbon APPEND PROPERTY LINK_DEPENDS "${NFSCARBON_ORDER_FILE}")
         # libnx's start-up code must stay at address 0 or the NRO does not boot (nfsmw-nx lost four
         # builds to this). Stop the build if the ordering moved it.
         add_custom_command(TARGET nfscarbon POST_BUILD
