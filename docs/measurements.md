@@ -258,8 +258,7 @@ with it on): the arena is neither the flash nor the shadow. 256 MiB is now the d
 ## Clock profiles, summary for the README (collector_pal)
 
 Average fps over whole sessions (Race Wars and circuits); "crowded" = race starts with 3000+ draws per frame.
-Each row comes from the section of that date below; rows marked * had a renderer setting off for a test. Add a
-row per new session; the README table at v1.0.0 is made from this one.
+Each row comes from the section of that date below. Add a row per new session; the README table at v1.0.0 is made from this one.
 
 | CPU / GPU / RAM MHz | resolution | crowded starts fps | mid-race fps |
 |---|---|---|---|
@@ -267,9 +266,13 @@ row per new session; the README table at v1.0.0 is made from this one.
 | 1224 / 614.4 / 1600 | 540p | 23.6 | 29.8 |
 | 1326 / 691.2 / 1600 | 540p | 25.1 | 30.0 |
 | 1326 / 691.2 / 1600 | 720p | 23.5 | 26.4 |
-| 1428 / 691.2 / 1600 * | 720p | 24.0 | 27.6 |
-| 1428 / 768 / 1600 * | 720p | 25.2 | 28.0 |
+| 1428 / 691.2 / 1600 | 720p | 23.2 | 28.1 |
+| 1428 / 768 / 1600 | 720p | 24.4 | 29.3 |
 | 1581 / 768 / 1600 | 720p | 26.0 | 28.2 |
+| 1581 / 844.8 / 1600 | 720p | 26.0 | 29.4 |
+| 1683 / 844.8 / 1866 | 720p | 27.8 | 29.9 |
+| 1785 / 921.6 / 1866 | 720p | 27.5 | 29.9 |
+| 1963.5 / 1152 / 2366 | 720p | 29.3 | 30.0 |
 
 ## Collector's Edition (collector_pal), stock clocks, 540p (2026-11-26)
 
@@ -362,3 +365,22 @@ debug check that costs some CPU).
 An earlier session at the same clocks with carbon_gpu_nvk_improvements off gave 24.8 / 26.8 fps (GPU ~2 ms
 longer per frame). Against 1428 MHz (GPU 768): +0.8 fps at crowded starts, +0.2 mid-race; at 720p the GPU
 sets the pace.
+
+### One session, six clock profiles, 720p (2026-11-27)
+
+Collector's Edition (collector_pal), default settings (no nfscarbon_options.txt, render scale 100), Race Wars and
+circuits, 39 minutes; the clocks were changed during the session. Each 5 s interval is matched with the clocks the
+profiler read in the same 10 s (intervals at a change left out). The NRO pulled the RAM back from 1600 to 1331 MHz
+three times in the first minute (nfscarbon_switch_ram_1600 = false) and then left it to the overclock tool.
+
+| CPU / GPU / RAM MHz | crowded fps (n) | draws | GPU ms | mid fps (n) | draws | GPU ms |
+|---|---|---|---|---|---|---|
+| 1428 / 691.2 / 1600 | 23.2 (25) | 3618 | 40.6 | 28.1 (98) | 2034 | 34.2 |
+| 1428 / 768 / 1600 | 24.4 (15) | 3457 | 36.7 | 29.3 (29) | 2157 | 32.7 |
+| 1581 / 844.8 / 1600 | 26.0 (14) | 3460 | 35.4 | 29.4 (41) | 2200 | 31.6 |
+| 1683 / 844.8 / 1866 | 27.8 (21) | 3396 | 34.2 | 29.9 (28) | 2155 | 29.6 |
+| 1785 / 921.6 / 1866 | 27.5 (9) | 4109 | 32.2 | 29.9 (38) | 1915 | 26.5 |
+| 1963.5 / 1152 / 2366 | 29.3 (10) | 3608 | 26.8 | 30.0 (13) | 2120 | 21.4 |
+
+The 1785 crowded intervals had 4109 draws per frame (heavier starts than the other rows). Mid-race reaches the
+30 fps cap from 1683 / 844.8 / 1866 on.
