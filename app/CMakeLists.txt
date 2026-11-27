@@ -203,6 +203,6 @@ if(REXGLUE_PLATFORM_SWITCH)
     rexglue_switch_add_nro(nfscarbon
         NAME "Need for Speed Carbon"
         AUTHOR "Kaays"
-        VERSION "0.7.0"
+        VERSION "1.0.0"
         ${NFSCARBON_ICON_ARG})
 endif()
