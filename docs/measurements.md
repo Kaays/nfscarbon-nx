@@ -332,3 +332,16 @@ renderer settings at their defaults.
 | mid-race | 28.0 | 2083 | 34.6 |
 
 Against GPU 691.2 MHz: +1.2 fps at crowded starts, +0.4 mid-race.
+
+### CPU 1581 MHz, GPU 768 MHz, RAM 1600, 720p (2026-11-27)
+
+Race Wars in Wolf's territory, 17 minutes, carbon_gpu_nvk_improvements off (white-flash test), the other
+renderer settings at their defaults.
+
+| | fps | draws/frame | GPU ms p50 |
+|---|---|---|---|
+| crowded race starts | 24.8 | 3458 | 38.4 |
+| mid-race | 26.8 | 2076 | 36.5 |
+
+No gain over 1428 MHz: at 720p the GPU sets the pace (the frame waits 14.5 ms on the GPU fence mid-race),
+and with the NVK draw-path improvements off the GPU time per frame is ~2 ms longer.

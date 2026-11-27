@@ -550,6 +550,7 @@ class Renderer {
   std::vector<TextureBindEntry> texture_bind_cache_;  // empty unless epoch == texture_bind_epoch_
   uint64_t texture_bind_epoch_ = 1;
   uint64_t texture_bind_gen_ = 1;
+  uint32_t bind_verify_logged_ = 0;  // carbon_gpu_texture_bind_verify
   // carbon_gpu_texture_bind_diag: keys of this and the previous frame with one fetch dword zeroed.
   std::unordered_set<uint64_t> bind_diag_prev_[6], bind_diag_cur_[6];
   uint64_t bind_diag_frame_ = 0;  // bumped when a resolved texture is created or textures are evicted
