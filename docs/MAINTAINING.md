@@ -74,6 +74,10 @@ Renderer debug cvars (toml or command line):
 | `carbon_gpu_trace_frame = n` | the same for one frame number |
 | `carbon_gpu_skip_ps = <hash,...>` | skips draws with these pixel shaders (find what a shader draws) |
 | `carbon_gpu_post_census` | lists the full-screen post-processing draws |
+| `carbon_gpu_flash_watch = true` | finds frames much brighter than the frames on both sides and logs their draws next to the previous frame's ("flash:" lines) |
+| `carbon_gpu_flash_capture = true` | with the above: saves the frame before, the bright frame(s) and the frame after as `carbon_frames/flash_<n>_*.bmp` (10 flashes) |
+| `carbon_gpu_watch_ps = "<hash>"` | traces the first draw of every run of frames that uses this pixel shader and logs c0/c1 per run |
+| `carbon_gpu_texture_bind_verify = true` | looks up again every texture bind carried from an earlier frame and logs any difference |
 
 Tracing writes thousands of lines per traced frame to the SD card and stalls the game for seconds at each one
 (sound runs ahead of cutscenes meanwhile): use it only for the scene being looked at. For a scene deep in the game,
@@ -98,13 +102,16 @@ datos" = frames requested and not delivered) before changing code. Two wrong gue
 worth knowing: user clip planes (now supported, but the game does not use them there) and the guest clock jump
 (reverted: not the cause, and it also skipped a real 1.6 s stall at boot).
 
+The "white flash" in races (2026-11) was chased for a week and left alone: one nearby AI car lights the scene from
+behind for one frame about every 3 s, like a headlight flash. The frame pictures show correct geometry and textures,
+and the renderer shortcuts were ruled out one by one (ZCULL, the NVK draw-path improvements, the texture bind carry
+checked bind by bind). It is most likely the game's own; if someone shows it is not, compare with Xenia first.
+
 ## Still open
 
 - **Crowded race starts at 19-20 FPS at stock clocks** (collector_pal, 540p; 28-30 mid-race). The game's preparation
   thread is the limit and its time is spread over hundreds of functions: the hottest leaf functions are native now
   (audio, vector math), the rest gives a few tenths of an FPS each. Lower resolution or overclocking is the answer.
-- **Rare one-frame white flash** in races (mostly transparent, random places). `carbon_gpu_flash_watch = true` logs
-  the draws of a frame much brighter than the ones before it next to the previous frame's ("flash:" lines).
 - Black frames at race starts: seen long ago, not since.
 - **Switch video clips drop 2-5 FPS on battery** ([#4](https://github.com/Kaays/nfscarbon-nx/issues/4)): the game
   looks fine but the saved clip stutters; on the charger the clip is smooth (CPU 1683 / GPU 921 / RAM 1600). Likely
