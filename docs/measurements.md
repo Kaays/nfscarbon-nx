@@ -320,3 +320,15 @@ carbon_gpu_nvk_improvements and carbon_gpu_depth_zcull off (the white-flash test
 An earlier, shorter session at the same clocks with the three on (Wolf's territory only, 26 mid-race
 intervals) gave 23.5 / 24.2 fps. At 720p the frame is GPU-bound, so the CPU clock adds little over 1326 MHz,
 and the three shortcuts cost no measurable frame rate when off.
+
+### CPU 1428 MHz, GPU 768 MHz, RAM 1600, 720p (2026-11-27)
+
+Race Wars in Wolf's territory, 12 minutes, carbon_gpu_depth_zcull off (white-flash test), the other
+renderer settings at their defaults.
+
+| | fps | draws/frame | GPU ms p50 |
+|---|---|---|---|
+| crowded race starts | 25.2 | 3460 | 36.1 |
+| mid-race | 28.0 | 2083 | 34.6 |
+
+Against GPU 691.2 MHz: +1.2 fps at crowded starts, +0.4 mid-race.
