@@ -263,13 +263,13 @@ namespace {
 void WriteBmp(const std::string& path, const uint8_t* rgba, uint32_t width, uint32_t height, bool swap_rb) {
   std::error_code ec;
   std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
-  std::ofstream f(path, std::ios::binary);
-  if (!f) {
-    REXGPU_WARN("[carbon-gpu] could not write {}", path);
-    return;
-  }
-  uint32_t image_size = width * height * 4;
-  uint8_t header[54] = {'B', 'M'};
+  // 24 bits, top-down, built whole and written at once (row by row took seconds on the SD card).
+  const uint32_t stride = (width * 3 + 3) & ~3u;
+  const uint32_t image_size = stride * height;
+  std::vector<uint8_t> file(54 + size_t(image_size));
+  uint8_t* header = file.data();
+  header[0] = 'B';
+  header[1] = 'M';
   auto put32 = [&](uint32_t offset, uint32_t v) { std::memcpy(header + offset, &v, 4); };
   put32(2, 54 + image_size);
   put32(10, 54);
@@ -277,21 +277,23 @@ void WriteBmp(const std::string& path, const uint8_t* rgba, uint32_t width, uint
   put32(18, width);
   put32(22, uint32_t(-int32_t(height)));
   header[26] = 1;
-  header[28] = 32;
+  header[28] = 24;
   put32(34, image_size);
-  f.write(reinterpret_cast<const char*>(header), sizeof(header));
-  std::vector<uint8_t> row(size_t(width) * 4);
   for (uint32_t y = 0; y < height; ++y) {
     const uint8_t* src = rgba + size_t(y) * width * 4;
+    uint8_t* row = file.data() + 54 + size_t(y) * stride;
     for (uint32_t x = 0; x < width; ++x) {
-      row[x * 4 + 0] = src[x * 4 + (swap_rb ? 0 : 2)];
-      row[x * 4 + 1] = src[x * 4 + 1];
-      row[x * 4 + 2] = src[x * 4 + (swap_rb ? 2 : 0)];
-      row[x * 4 + 3] = 255;
+      row[x * 3 + 0] = src[x * 4 + (swap_rb ? 0 : 2)];
+      row[x * 3 + 1] = src[x * 4 + 1];
+      row[x * 3 + 2] = src[x * 4 + (swap_rb ? 2 : 0)];
     }
-    f.write(reinterpret_cast<const char*>(row.data()), std::streamsize(row.size()));
   }
-  REXGPU_INFO("[carbon-gpu] saved {}", path);
+  std::ofstream f(path, std::ios::binary);
+  if (!f) {
+    REXGPU_WARN("[carbon-gpu] could not write {}", path);
+    return;
+  }
+  f.write(reinterpret_cast<const char*>(file.data()), std::streamsize(file.size()));
 }
 
 // Guest index conversion: byte swap, primitive restart mapping and min/max in one
@@ -3606,16 +3608,33 @@ void Renderer::FlashReport(uint64_t frame, uint32_t frames, double luma, double 
     // The frame before, the flash frame(s) and the frame after. All are older than the frame
     // just read back, so their copies have finished.
     ++flash_captures_;
+    // Copied here, written by a thread of its own: writing on this thread stopped the game for
+    // 6-13 s per flash.
+    struct Shot {
+      std::string path;
+      std::vector<uint8_t> pixels;
+      uint32_t w, h;
+      bool swap;
+    };
+    auto shots = std::make_shared<std::vector<Shot>>();
     for (uint64_t f = frame ? frame - 1 : 0; f <= frame + frames; ++f) {
       const uint32_t k = uint32_t(f % kCaptureFrames);
       if (cap_frame_[k] != f + 1 || !cap_mapped_[k]) continue;
       vmaInvalidateAllocation(allocator_, cap_allocation_[k], 0, VK_WHOLE_SIZE);
-      const std::string path = fmt::format("carbon_frames/flash_{:06}_{}.bmp", frame,
-                                           f < frame ? "before" : f >= frame + frames ? "after"
-                                                                 : f == frame ? "flash" : "flash2");
-      WriteBmp(path, static_cast<const uint8_t*>(cap_mapped_[k]), cap_w_[k], cap_h_[k], cap_swap_[k]);
-      REXGPU_WARN("[carbon-gpu] flash: saved {}", path);
+      Shot shot;
+      shot.path = fmt::format("carbon_frames/flash_{:06}_{}.bmp", frame,
+                              f < frame ? "before" : f >= frame + frames ? "after" : f == frame ? "flash" : "flash2");
+      const auto* src = static_cast<const uint8_t*>(cap_mapped_[k]);
+      shot.pixels.assign(src, src + size_t(cap_w_[k]) * cap_h_[k] * 4);
+      shot.w = cap_w_[k];
+      shot.h = cap_h_[k];
+      shot.swap = cap_swap_[k];
+      REXGPU_WARN("[carbon-gpu] flash: saving {}", shot.path);
+      shots->push_back(std::move(shot));
     }
+    std::thread([shots]() {
+      for (const Shot& shot : *shots) WriteBmp(shot.path, shot.pixels.data(), shot.w, shot.h, shot.swap);
+    }).detach();
   }
   const auto& now = flash_draws_[frame % kFlashFrames];
   const auto& before = flash_draws_[(frame + kFlashFrames - 1) % kFlashFrames];
