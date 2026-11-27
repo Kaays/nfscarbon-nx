@@ -309,12 +309,14 @@ GPU-bound at 720p (the CPU waits 16 ms a frame on the GPU fence mid-race): again
 
 ### CPU 1428 MHz, GPU 691.2 / RAM 1600, 720p (2026-11-27)
 
-Race Wars in Wolf's territory (a heavier track than the session above).
+Race Wars in Wolf's and Angie's territories, 14 minutes, with carbon_gpu_texture_bind_carry,
+carbon_gpu_nvk_improvements and carbon_gpu_depth_zcull off (the white-flash test).
 
 | | fps | draws/frame | GPU ms p50 |
 |---|---|---|---|
-| crowded race starts | 23.5 | 3618 | 38.8 |
-| mid-race | 24.2 | 1954 | 40.9 |
+| crowded race starts | 24.0 | 3369 | 38.1 |
+| mid-race | 27.6 | 2116 | 35.4 |
 
-No gain from the CPU clock at 720p: the frame waits ~22 ms on the GPU fence mid-race. Few mid-race samples
-(26 intervals), on a different track, so the mid-race figure is not comparable with 1326 MHz.
+An earlier, shorter session at the same clocks with the three on (Wolf's territory only, 26 mid-race
+intervals) gave 23.5 / 24.2 fps. At 720p the frame is GPU-bound, so the CPU clock adds little over 1326 MHz,
+and the three shortcuts cost no measurable frame rate when off.
