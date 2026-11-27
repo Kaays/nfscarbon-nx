@@ -23,9 +23,6 @@ REXCVAR_DEFINE_BOOL(carbon_gpu_texture_bind_carry, true, "CarbonGPU",
                     "Reuse a draw's texture lookups (textures, views, samplers) from an earlier "
                     "frame when its shader and fetch constants are the same; only the descriptor "
                     "set is written again");
-REXCVAR_DEFINE_BOOL(carbon_gpu_texture_bind_verify, false, "CarbonGPU",
-                    "Debug: when a draw's texture lookups are carried from an earlier frame, look them "
-                    "up again and log any difference (costs CPU)");
 REXCVAR_DEFINE_BOOL(carbon_gpu_cube_from_faces, true, "CarbonGPU",
                     "Car reflection cube put together from the faces the game draws (false: the "
                     "paint reflects only the disc's static cube, as before v0.4.7)");
@@ -824,133 +821,6 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
   uint32_t slot_count = 0;
   bool carry = descriptor_count <= kBindInfoMax;  // keep the infos for later frames
 
-  // The lookups of a draw, as done when nothing is carried (also the reference for
-  // carbon_gpu_texture_bind_verify).
-  auto build = [&](DrawConstants& cc, VkDescriptorImageInfo* inf, TextureBindEntry::Slot* sl,
-                   uint32_t& sc, bool& cach, bool& car) {
-    for (const TextureBinding& b : ts.textures) {
-      xenos::xe_gpu_texture_fetch_t fetch = regs.GetTextureFetch(b.fetch_index);
-      GuestTexture g;
-      Texture* t = nullptr;
-      if (GuestTextureFromFetch(fetch, g)) {
-        t = GetTexture(g, true);
-        // Not kept: a failed texture (retried next draw). A cube from memory is not carried to a
-        // later frame (its faces may be resolved by then); one put together from resolved faces is
-        // kept and goes through GetCubeFromResolvedFaces again on every reuse.
-        if (!t) {
-          cach = false;
-        } else if (g.dimension == xenos::DataDimension::kCube && !t->resolved) {
-          car = false;
-        }
-      }
-      uint32_t fi = b.fetch_index;
-      VkSampler sampler = GetSampler(fetch, b, t && t->resolved);
-      if (tracing_) {
-        REXGPU_WARN(
-            "[carbon-gpu] trace:   tex f{} {} addr {:08X} {}x{}x{} fmt {} dim {} tiled {} -> {}{}{} gen {}",
-            fi, set_index == 1 ? "vs" : "ps", g.base_address, g.width, g.height, g.depth,
-            uint32_t(g.format), uint32_t(g.dimension), g.tiled ? 1 : 0,
-            t ? (t->resolved ? "resolved" : "memory") : "none",
-            t && t->view_type == VK_IMAGE_VIEW_TYPE_CUBE ? " cube" : "",
-            t && t->layers > 1 ? fmt::format(" layers {}", t->layers) : std::string(),
-            t ? t->resolve_gen : 0);
-      }
-      // Per-fetch-constant parameters for the shader.
-      uint32_t signs_in[4] = {uint32_t(fetch.sign_x), uint32_t(fetch.sign_y), uint32_t(fetch.sign_z),
-                              uint32_t(fetch.sign_w)};
-      uint32_t swizzle = fetch.swizzle;
-      bool all_signed = signs_in[0] == 1 && signs_in[1] == 1 && signs_in[2] == 1 && signs_in[3] == 1;
-      bool use_signed_view = t && all_signed && t->format.host_format_signed != VK_FORMAT_UNDEFINED;
-      uint32_t signs = 0;
-      if (!use_signed_view) {
-        for (uint32_t comp = 0; comp < 4; ++comp) {
-          uint32_t src = (swizzle >> (comp * 3)) & 7;
-          uint32_t s = src < 4 ? signs_in[src] : 0;
-          signs |= (s & 3) << (comp * 2);
-        }
-      }
-      if (t && t->has_unsampled) {
-        for (ResolveSig& s : t->resolve_sigs) s.sampled = true;
-        t->has_unsampled = false;
-      }
-      if (t && t->resolved) {
-        // Resolved data already went through the render target's own encoding.
-        signs = 0;
-        use_signed_view = false;
-      }
-      cc.tex_info[fi * 4 + 0] = signs;
-      cc.tex_info[fi * 4 + 1] = (t && t->layers > 1 && t->view_type != VK_IMAGE_VIEW_TYPE_CUBE) ? 1 : 0;
-      cc.tex_info[fi * 4 + 2] = uint32_t(g.dimension);
-      cc.tex_size[fi * 4 + 0] = float(std::max<uint32_t>(g.width, 1));
-      cc.tex_size[fi * 4 + 1] = float(std::max<uint32_t>(g.height, 1));
-      cc.tex_size[fi * 4 + 2] = float(std::max<uint32_t>(g.depth, 1));
-      cc.tex_size[fi * 4 + 3] = std::ldexp(1.0f, int(fetch.exp_adjust));
-      cc.tex_uv[fi * 4 + 0] = 1.0f;
-      cc.tex_uv[fi * 4 + 1] = 1.0f;
-      if (t && t->resolved) {
-        cc.tex_uv[fi * 4 + 0] = float(g.width) * t->res_scale / float(t->width);
-        cc.tex_uv[fi * 4 + 1] = float(g.height) * t->res_scale / float(t->height);
-      }
-      if (cach) {
-        TextureBindEntry::Slot& s = sl[sc++];
-        s.fi = fi;
-        std::memcpy(s.info, &cc.tex_info[fi * 4], sizeof(s.info));
-        std::memcpy(s.size, &cc.tex_size[fi * 4], sizeof(s.size));
-        s.uv[0] = cc.tex_uv[fi * 4 + 0];
-        s.uv[1] = cc.tex_uv[fi * 4 + 1];
-        s.texture = t;
-        s.gen = t ? t->resolve_gen : 0;
-        s.cube_from_faces = t && t->resolved && g.dimension == xenos::DataDimension::kCube;
-        s.resolved_base = t && t->resolved && !s.cube_from_faces ? g.base_address : 0;
-      }
-      if (t && t->layout != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-        // Resolved textures are left readable after the copy; anything else is
-        // uploaded in the upload command buffer.
-        EndRendering();
-        TransitionImage(frame().cb, t->image, VK_IMAGE_ASPECT_COLOR_BIT, t->layout,
-                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-      }
-      auto view_or_null = [&](VkImageViewType type, VkImageView null_view) {
-        if (!t) return null_view;
-        bool ok = false;
-        switch (type) {
-          case VK_IMAGE_VIEW_TYPE_2D:
-            ok = t->view_type != VK_IMAGE_VIEW_TYPE_3D;
-            break;
-          case VK_IMAGE_VIEW_TYPE_2D_ARRAY:
-            ok = t->view_type == VK_IMAGE_VIEW_TYPE_2D_ARRAY || t->view_type == VK_IMAGE_VIEW_TYPE_2D;
-            break;
-          case VK_IMAGE_VIEW_TYPE_3D:
-            ok = t->view_type == VK_IMAGE_VIEW_TYPE_3D;
-            break;
-          case VK_IMAGE_VIEW_TYPE_CUBE:
-            ok = t->view_type == VK_IMAGE_VIEW_TYPE_CUBE;
-            break;
-          default:
-            break;
-        }
-        return ok ? GetTextureView(*t, swizzle, use_signed_view, type) : null_view;
-      };
-      switch (b.dimension) {
-        case xenos::FetchOpDimension::k1D:
-        case xenos::FetchOpDimension::k2D:
-          inf[b.binding] = {sampler, view_or_null(VK_IMAGE_VIEW_TYPE_2D, null_2d_.view),
-                              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-          break;
-        case xenos::FetchOpDimension::k3DOrStacked:
-          inf[b.binding] = {sampler, view_or_null(VK_IMAGE_VIEW_TYPE_3D, null_3d_.view),
-                              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-          inf[b.binding + 1] = {sampler,
-                                  view_or_null(VK_IMAGE_VIEW_TYPE_2D_ARRAY, null_2d_array_.view),
-                                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-          break;
-        case xenos::FetchOpDimension::kCube:
-          inf[b.binding] = {sampler, view_or_null(VK_IMAGE_VIEW_TYPE_CUBE, null_cube_.view),
-                              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-          break;
-      }
-    }
-  };
   VkDescriptorImageInfo infos[kMaxDescriptors];
   if (carried) {
     ++stats_.tex_binds_carried;
@@ -968,56 +838,132 @@ void Renderer::BindTextures(const RegisterFile& regs, Shader* shader, uint32_t s
     }
     slot_count = binding_count;
     std::memcpy(infos, e.infos, sizeof(VkDescriptorImageInfo) * descriptor_count);
-    if (REXCVAR_GET(carbon_gpu_texture_bind_verify)) {
-      // Do the lookups again and compare: any difference is a carry that should not have been.
-      DrawConstants vc = c;
-      VkDescriptorImageInfo vinf[kMaxDescriptors] = {};
-      TextureBindEntry::Slot vsl[kBindCacheMax];
-      uint32_t vsc = 0;
-      bool vcach = true, vcar = true;
-      build(vc, vinf, vsl, vsc, vcach, vcar);
-      for (uint32_t i = 0; i < descriptor_count; ++i) {
-        if (!vinf[i].imageView) vinf[i] = {point_sampler_, null_2d_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-      }
-      for (uint32_t i = 0; i < binding_count && i < vsc && bind_verify_logged_ < 60; ++i) {
-        const TextureBindEntry::Slot& a = slots[i];
-        const TextureBindEntry::Slot& b = vsl[i];
-        const bool tex_differs = a.texture != b.texture;
-        const bool consts_differ = std::memcmp(a.info, b.info, sizeof(a.info)) != 0 ||
-                                   std::memcmp(a.size, b.size, sizeof(a.size)) != 0 ||
-                                   std::memcmp(a.uv, b.uv, sizeof(a.uv)) != 0;
-        if (!tex_differs && !consts_differ) continue;
-        ++bind_verify_logged_;
-        auto describe = [](const Texture* t) {
-          if (!t) return std::string("none");
-          return fmt::format("{:08X} {}x{} fmt {} {} gen {} last used {}", t->guest.base_address,
-                             t->guest.width, t->guest.height, uint32_t(t->guest.format),
-                             t->resolved ? "resolved" : "memory", t->resolve_gen, t->last_used_frame);
-        };
-        REXGPU_WARN("[carbon-gpu] carry-verify: frame {} {} {:016X} f{}: carried {} | looked up {}{}",
-                    frame_number_, set_index == 1 ? "vs" : "ps", shader->hash, a.fi, describe(a.texture),
-                    describe(b.texture),
-                    consts_differ ? fmt::format(" | uv {:g} {:g} vs {:g} {:g}, size {:g}x{:g} vs {:g}x{:g}",
-                                                a.uv[0], a.uv[1], b.uv[0], b.uv[1], a.size[0], a.size[1],
-                                                b.size[0], b.size[1])
-                                  : std::string());
-      }
-      bool views_differ = false;
-      for (uint32_t i = 0; i < descriptor_count; ++i) {
-        views_differ |= vinf[i].imageView != infos[i].imageView || vinf[i].sampler != infos[i].sampler;
-      }
-      if (views_differ && bind_verify_logged_ < 60) {
-        ++bind_verify_logged_;
-        REXGPU_WARN("[carbon-gpu] carry-verify: frame {} {} {:016X}: same textures, other image views "
-                    "or samplers",
-                    frame_number_, set_index == 1 ? "vs" : "ps", shader->hash);
+  } else {
+  ++stats_.tex_binds_built;
+  std::memset(infos, 0, sizeof(VkDescriptorImageInfo) * descriptor_count);
+  for (const TextureBinding& b : ts.textures) {
+    xenos::xe_gpu_texture_fetch_t fetch = regs.GetTextureFetch(b.fetch_index);
+    GuestTexture g;
+    Texture* t = nullptr;
+    if (GuestTextureFromFetch(fetch, g)) {
+      t = GetTexture(g, true);
+      // Not kept: a failed texture (retried next draw). A cube from memory is not carried to a
+      // later frame (its faces may be resolved by then); one put together from resolved faces is
+      // kept and goes through GetCubeFromResolvedFaces again on every reuse.
+      if (!t) {
+        cacheable = false;
+      } else if (g.dimension == xenos::DataDimension::kCube && !t->resolved) {
+        carry = false;
       }
     }
-  } else {
-    ++stats_.tex_binds_built;
-    std::memset(infos, 0, sizeof(VkDescriptorImageInfo) * descriptor_count);
-    build(c, infos, slots, slot_count, cacheable, carry);
+    uint32_t fi = b.fetch_index;
+    VkSampler sampler = GetSampler(fetch, b, t && t->resolved);
+    if (tracing_) {
+      REXGPU_WARN(
+          "[carbon-gpu] trace:   tex f{} {} addr {:08X} {}x{}x{} fmt {} dim {} tiled {} -> {}{}{} gen {}",
+          fi, set_index == 1 ? "vs" : "ps", g.base_address, g.width, g.height, g.depth,
+          uint32_t(g.format), uint32_t(g.dimension), g.tiled ? 1 : 0,
+          t ? (t->resolved ? "resolved" : "memory") : "none",
+          t && t->view_type == VK_IMAGE_VIEW_TYPE_CUBE ? " cube" : "",
+          t && t->layers > 1 ? fmt::format(" layers {}", t->layers) : std::string(),
+          t ? t->resolve_gen : 0);
+    }
+    // Per-fetch-constant parameters for the shader.
+    uint32_t signs_in[4] = {uint32_t(fetch.sign_x), uint32_t(fetch.sign_y), uint32_t(fetch.sign_z),
+                            uint32_t(fetch.sign_w)};
+    uint32_t swizzle = fetch.swizzle;
+    bool all_signed = signs_in[0] == 1 && signs_in[1] == 1 && signs_in[2] == 1 && signs_in[3] == 1;
+    bool use_signed_view = t && all_signed && t->format.host_format_signed != VK_FORMAT_UNDEFINED;
+    uint32_t signs = 0;
+    if (!use_signed_view) {
+      for (uint32_t comp = 0; comp < 4; ++comp) {
+        uint32_t src = (swizzle >> (comp * 3)) & 7;
+        uint32_t s = src < 4 ? signs_in[src] : 0;
+        signs |= (s & 3) << (comp * 2);
+      }
+    }
+    if (t && t->has_unsampled) {
+      for (ResolveSig& s : t->resolve_sigs) s.sampled = true;
+      t->has_unsampled = false;
+    }
+    if (t && t->resolved) {
+      // Resolved data already went through the render target's own encoding.
+      signs = 0;
+      use_signed_view = false;
+    }
+    c.tex_info[fi * 4 + 0] = signs;
+    c.tex_info[fi * 4 + 1] = (t && t->layers > 1 && t->view_type != VK_IMAGE_VIEW_TYPE_CUBE) ? 1 : 0;
+    c.tex_info[fi * 4 + 2] = uint32_t(g.dimension);
+    c.tex_size[fi * 4 + 0] = float(std::max<uint32_t>(g.width, 1));
+    c.tex_size[fi * 4 + 1] = float(std::max<uint32_t>(g.height, 1));
+    c.tex_size[fi * 4 + 2] = float(std::max<uint32_t>(g.depth, 1));
+    c.tex_size[fi * 4 + 3] = std::ldexp(1.0f, int(fetch.exp_adjust));
+    c.tex_uv[fi * 4 + 0] = 1.0f;
+    c.tex_uv[fi * 4 + 1] = 1.0f;
+    if (t && t->resolved) {
+      c.tex_uv[fi * 4 + 0] = float(g.width) * t->res_scale / float(t->width);
+      c.tex_uv[fi * 4 + 1] = float(g.height) * t->res_scale / float(t->height);
+    }
+    if (cacheable) {
+      TextureBindEntry::Slot& s = slots[slot_count++];
+      s.fi = fi;
+      std::memcpy(s.info, &c.tex_info[fi * 4], sizeof(s.info));
+      std::memcpy(s.size, &c.tex_size[fi * 4], sizeof(s.size));
+      s.uv[0] = c.tex_uv[fi * 4 + 0];
+      s.uv[1] = c.tex_uv[fi * 4 + 1];
+      s.texture = t;
+      s.gen = t ? t->resolve_gen : 0;
+      s.cube_from_faces = t && t->resolved && g.dimension == xenos::DataDimension::kCube;
+      s.resolved_base = t && t->resolved && !s.cube_from_faces ? g.base_address : 0;
+    }
+    if (t && t->layout != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+      // Resolved textures are left readable after the copy; anything else is
+      // uploaded in the upload command buffer.
+      EndRendering();
+      TransitionImage(frame().cb, t->image, VK_IMAGE_ASPECT_COLOR_BIT, t->layout,
+                      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    }
+    auto view_or_null = [&](VkImageViewType type, VkImageView null_view) {
+      if (!t) return null_view;
+      bool ok = false;
+      switch (type) {
+        case VK_IMAGE_VIEW_TYPE_2D:
+          ok = t->view_type != VK_IMAGE_VIEW_TYPE_3D;
+          break;
+        case VK_IMAGE_VIEW_TYPE_2D_ARRAY:
+          ok = t->view_type == VK_IMAGE_VIEW_TYPE_2D_ARRAY || t->view_type == VK_IMAGE_VIEW_TYPE_2D;
+          break;
+        case VK_IMAGE_VIEW_TYPE_3D:
+          ok = t->view_type == VK_IMAGE_VIEW_TYPE_3D;
+          break;
+        case VK_IMAGE_VIEW_TYPE_CUBE:
+          ok = t->view_type == VK_IMAGE_VIEW_TYPE_CUBE;
+          break;
+        default:
+          break;
+      }
+      return ok ? GetTextureView(*t, swizzle, use_signed_view, type) : null_view;
+    };
+    switch (b.dimension) {
+      case xenos::FetchOpDimension::k1D:
+      case xenos::FetchOpDimension::k2D:
+        infos[b.binding] = {sampler, view_or_null(VK_IMAGE_VIEW_TYPE_2D, null_2d_.view),
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        break;
+      case xenos::FetchOpDimension::k3DOrStacked:
+        infos[b.binding] = {sampler, view_or_null(VK_IMAGE_VIEW_TYPE_3D, null_3d_.view),
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        infos[b.binding + 1] = {sampler,
+                                view_or_null(VK_IMAGE_VIEW_TYPE_2D_ARRAY, null_2d_array_.view),
+                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        break;
+      case xenos::FetchOpDimension::kCube:
+        infos[b.binding] = {sampler, view_or_null(VK_IMAGE_VIEW_TYPE_CUBE, null_cube_.view),
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        break;
+    }
   }
+  }  // built
   for (uint32_t i = 0; i < descriptor_count; ++i) {
     if (!infos[i].imageView) {
       infos[i] = {point_sampler_, null_2d_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};

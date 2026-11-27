@@ -74,10 +74,6 @@ Renderer debug cvars (toml or command line):
 | `carbon_gpu_trace_frame = n` | the same for one frame number |
 | `carbon_gpu_skip_ps = <hash,...>` | skips draws with these pixel shaders (find what a shader draws) |
 | `carbon_gpu_post_census` | lists the full-screen post-processing draws |
-| `carbon_gpu_flash_watch = true` | finds frames much brighter than the frames on both sides and logs their draws next to the previous frame's ("flash:" lines) |
-| `carbon_gpu_flash_capture = true` | with the above: saves the frame before, the bright frame(s) and the frame after as `carbon_frames/flash_<n>_*.bmp` (10 flashes) |
-| `carbon_gpu_watch_ps = "<hash>"` | traces the first draw of every run of frames that uses this pixel shader and logs c0/c1 per run |
-| `carbon_gpu_texture_bind_verify = true` | looks up again every texture bind carried from an earlier frame and logs any difference |
 
 Tracing writes thousands of lines per traced frame to the SD card and stalls the game for seconds at each one
 (sound runs ahead of cutscenes meanwhile): use it only for the scene being looked at. For a scene deep in the game,
@@ -106,6 +102,8 @@ The "white flash" in races (2026-11) was chased over many test sessions and left
 behind for one frame about every 3 s, like a headlight flash. The frame pictures show correct geometry and textures,
 and the renderer shortcuts were ruled out one by one (ZCULL, the NVK draw-path improvements, the texture bind carry
 checked bind by bind). It is most likely the game's own; if someone shows it is not, compare with Xenia first.
+The debug cvars written for it (`carbon_gpu_flash_watch`, `_flash_capture`, `_watch_ps`, `_texture_bind_verify`) were
+taken out again; they are in the history from commit 89a380a on.
 
 ## Still open
 

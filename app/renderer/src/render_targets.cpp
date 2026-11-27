@@ -587,16 +587,6 @@ void Renderer::Resolve(const RegisterFile& regs) {
           }
         }
       }
-      if (flash_watch_) {
-        // In the flash log a resolve shows as prim FE (copied) or FD (skipped as redundant):
-        // vs = destination address, ps = source base | pitch << 12, size = destination rectangle.
-        FlashDraw d;
-        d.vs = dest->guest.base_address | (uint64_t(dy0) << 32);
-        d.ps = uint64_t(src->edram_base) | (uint64_t(src->pitch) << 12) | (uint64_t(is_depth) << 31);
-        d.size = uint32_t(dx1 - dx0) | (uint32_t(dy1 - dy0) << 16);
-        d.prim = redundant ? 0xFD : 0xFE;
-        flash_draws_[frame_number_ % kFlashFrames].push_back(d);
-      }
       if (redundant) {
         ++stats_.resolves_skipped;
         stats_.resolve_px_skipped += resolve_px;

@@ -550,7 +550,6 @@ class Renderer {
   std::vector<TextureBindEntry> texture_bind_cache_;  // empty unless epoch == texture_bind_epoch_
   uint64_t texture_bind_epoch_ = 1;
   uint64_t texture_bind_gen_ = 1;
-  uint32_t bind_verify_logged_ = 0;  // carbon_gpu_texture_bind_verify
   // carbon_gpu_texture_bind_diag: keys of this and the previous frame with one fetch dword zeroed.
   std::unordered_set<uint64_t> bind_diag_prev_[6], bind_diag_cur_[6];
   uint64_t bind_diag_frame_ = 0;  // bumped when a resolved texture is created or textures are evicted
@@ -608,60 +607,6 @@ class Renderer {
   uint32_t ps_frames_ = 0;
   void PsStamp(uint64_t hash);
   void ReadPsStamps(uint32_t slot);
-  // carbon_gpu_flash_watch: finds the random one-frame white flash. A few rows of every presented
-  // frame are read back; a frame much brighter than the ones before it is logged with its draws
-  // next to the previous frame's, grouped by pass, shaders and blend, so the odd ones stand out.
-  struct FlashDraw {
-    uint64_t vs = 0, ps = 0;
-    uint32_t target = 0;  // color 0: EDRAM base | pitch << 12 | format << 26 (0 = depth only)
-    uint32_t size = 0;    // pass width | height << 16
-    uint32_t count = 0;   // vertices or indices
-    uint32_t blend = 0;   // RB_BLENDCONTROL0 (0 when not blending)
-    uint32_t scissor = 0; // host pixels
-    uint8_t prim = 0;
-  };
-  static constexpr uint32_t kFlashFrames = 8;
-  static constexpr uint32_t kFlashRows = 16;
-  std::vector<FlashDraw> flash_draws_[kFlashFrames];
-  uint64_t flash_draws_frame_[kFlashFrames] = {};
-  VkBuffer flash_buffer_[kFramesInFlight] = {};
-  VmaAllocation flash_allocation_[kFramesInFlight] = {};
-  void* flash_mapped_[kFramesInFlight] = {};
-  uint32_t flash_buffer_bytes_[kFramesInFlight] = {};
-  uint64_t flash_frame_[kFramesInFlight] = {};  // frame whose rows the slot holds (0 = none)
-  uint32_t flash_width_[kFramesInFlight] = {};
-  // carbon_gpu_flash_capture: whole frames, a ring longer than the read-back delay.
-  static constexpr uint32_t kCaptureFrames = 8;
-  static constexpr uint32_t kFlashCaptureMax = 10;
-  VkBuffer cap_buffer_[kCaptureFrames] = {};
-  VmaAllocation cap_allocation_[kCaptureFrames] = {};
-  void* cap_mapped_[kCaptureFrames] = {};
-  uint32_t cap_bytes_[kCaptureFrames] = {};
-  uint64_t cap_frame_[kCaptureFrames] = {};  // frame + 1 (0 = none)
-  uint32_t cap_w_[kCaptureFrames] = {}, cap_h_[kCaptureFrames] = {};
-  bool cap_swap_[kCaptureFrames] = {};
-  uint32_t flash_captures_ = 0;
-  // Brightness of the last four frames read back, oldest first (frame + 1, 0 = none).
-  double flash_luma_[4] = {};
-  uint64_t flash_luma_frame_[4] = {};
-  uint64_t flash_last_report_ = 0;  // frame + 1 of the last frame a report covered
-  uint32_t flash_reports_ = 0;
-  bool flash_watch_ = false;
-  std::string watch_ps_text_;
-  uint64_t watch_ps_ = 0;
-  // carbon_gpu_watch_ps groups the frames that use the shader into runs: the first draw of a
-  // run is traced in full, and a one-line summary of c0 and c1 follows when the run ends.
-  struct WatchRun {
-    uint64_t first = 0, last = 0;  // frame numbers; last == 0: no run open
-    uint32_t draws = 0;
-    float c0x_min = 0, c0x_max = 0;
-    float c1_first[4] = {}, c1_peak[4] = {}, c1_last[4] = {};
-  } watch_run_;
-  uint32_t watch_runs_ = 0;
-  void WatchRunEnd();
-  void FlashCopy(VkCommandBuffer cb, Texture* front);
-  void FlashRead(uint32_t slot);
-  void FlashReport(uint64_t frame, uint32_t frames, double luma, double around);
   uint32_t ts_count_[kFramesInFlight] = {};
   uint8_t ts_tag_[kFramesInFlight][kMaxStamps] = {};
   bool ts_valid_[kFramesInFlight] = {};

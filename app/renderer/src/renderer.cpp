@@ -12,8 +12,6 @@
 #include <chrono>
 #include <cmath>
 #include <fstream>
-#include <map>
-#include <string>
 #include <thread>
 #include <type_traits>
 #if defined(__ANDROID__)
@@ -135,16 +133,6 @@ REXCVAR_DEFINE_INT32(carbon_gpu_recorder_core, 1, "CarbonGPU",
                      "Switch: pin the Vulkan recorder thread to this core (0-3); -1 = let Horizon choose "
                      "(read at start-up)")
     .range(-1, 3);
-REXCVAR_DEFINE_BOOL(carbon_gpu_flash_capture, false, "CarbonGPU",
-                    "Debug, with carbon_gpu_flash_watch: keep the last frames whole and save the frame "
-                    "before a flash, the flash and the frame after as BMP in carbon_frames/ (10 flashes)");
-REXCVAR_DEFINE_BOOL(carbon_gpu_flash_watch, false, "CarbonGPU",
-                    "Debug: read back a few rows of every presented frame and, when one or two frames "
-                    "are much brighter than the frames on both sides (the random white flash), log "
-                    "their draws next to the previous frame's");
-REXCVAR_DEFINE_STRING(carbon_gpu_watch_ps, "", "CarbonGPU",
-                      "Debug: pixel shader hash (16 hex digits). Every draw with it is traced in full "
-                      "(textures, pixel shader constants c0-c15, bools), up to 30 draws a session");
 REXCVAR_DEFINE_BOOL(carbon_gpu_ps_timing, false, "CarbonGPU",
                     "Measurement: GPU time per pixel shader in the big scene passes, one frame in 30 "
                     "(logged with the pass statistics)");
@@ -263,13 +251,13 @@ namespace {
 void WriteBmp(const std::string& path, const uint8_t* rgba, uint32_t width, uint32_t height, bool swap_rb) {
   std::error_code ec;
   std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
-  // 24 bits, top-down, built whole and written at once (row by row took seconds on the SD card).
-  const uint32_t stride = (width * 3 + 3) & ~3u;
-  const uint32_t image_size = stride * height;
-  std::vector<uint8_t> file(54 + size_t(image_size));
-  uint8_t* header = file.data();
-  header[0] = 'B';
-  header[1] = 'M';
+  std::ofstream f(path, std::ios::binary);
+  if (!f) {
+    REXGPU_WARN("[carbon-gpu] could not write {}", path);
+    return;
+  }
+  uint32_t image_size = width * height * 4;
+  uint8_t header[54] = {'B', 'M'};
   auto put32 = [&](uint32_t offset, uint32_t v) { std::memcpy(header + offset, &v, 4); };
   put32(2, 54 + image_size);
   put32(10, 54);
@@ -277,23 +265,21 @@ void WriteBmp(const std::string& path, const uint8_t* rgba, uint32_t width, uint
   put32(18, width);
   put32(22, uint32_t(-int32_t(height)));
   header[26] = 1;
-  header[28] = 24;
+  header[28] = 32;
   put32(34, image_size);
+  f.write(reinterpret_cast<const char*>(header), sizeof(header));
+  std::vector<uint8_t> row(size_t(width) * 4);
   for (uint32_t y = 0; y < height; ++y) {
     const uint8_t* src = rgba + size_t(y) * width * 4;
-    uint8_t* row = file.data() + 54 + size_t(y) * stride;
     for (uint32_t x = 0; x < width; ++x) {
-      row[x * 3 + 0] = src[x * 4 + (swap_rb ? 0 : 2)];
-      row[x * 3 + 1] = src[x * 4 + 1];
-      row[x * 3 + 2] = src[x * 4 + (swap_rb ? 2 : 0)];
+      row[x * 4 + 0] = src[x * 4 + (swap_rb ? 0 : 2)];
+      row[x * 4 + 1] = src[x * 4 + 1];
+      row[x * 4 + 2] = src[x * 4 + (swap_rb ? 2 : 0)];
+      row[x * 4 + 3] = 255;
     }
+    f.write(reinterpret_cast<const char*>(row.data()), std::streamsize(row.size()));
   }
-  std::ofstream f(path, std::ios::binary);
-  if (!f) {
-    REXGPU_WARN("[carbon-gpu] could not write {}", path);
-    return;
-  }
-  f.write(reinterpret_cast<const char*>(file.data()), std::streamsize(file.size()));
+  REXGPU_INFO("[carbon-gpu] saved {}", path);
 }
 
 // Guest index conversion: byte swap, primitive restart mapping and min/max in one
@@ -819,7 +805,6 @@ bool Renderer::BeginFrame() {
     f.submitted = false;
     ReadGpuStamps(frame_index_);
     ReadPsStamps(frame_index_);
-    FlashRead(frame_index_);
   }
   if (arena_reset_pending_) {
     // The arena is full: wait until no frame in flight reads it, then start over.
@@ -870,19 +855,6 @@ bool Renderer::BeginFrame() {
   }
   f.number = frame_number_;
   frame_open_ = true;
-  flash_watch_ = REXCVAR_GET(carbon_gpu_flash_watch);
-  if (const std::string& w = REXCVAR_GET(carbon_gpu_watch_ps); w != watch_ps_text_) {
-    watch_ps_text_ = w;
-    watch_ps_ = w.empty() ? 0 : std::strtoull(w.c_str(), nullptr, 16);
-  }
-  if (watch_run_.last && frame_number_ > watch_run_.last + 1) {
-    WatchRunEnd();
-    watch_run_.last = 0;
-  }
-  if (flash_watch_) {
-    flash_draws_[frame_number_ % kFlashFrames].clear();
-    flash_draws_frame_[frame_number_ % kFlashFrames] = frame_number_;
-  }
   tracing_ = (REXCVAR_GET(carbon_gpu_trace_frame) > 0 &&
               frame_number_ == uint64_t(REXCVAR_GET(carbon_gpu_trace_frame))) ||
              (REXCVAR_GET(carbon_gpu_trace_interval) > 0 &&
@@ -2243,56 +2215,6 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
     double start = NowSeconds();
     ~FrameTimer() { total += NowSeconds() - start; }
   } frame_draw_timer{frame_draw_s_};
-  // carbon_gpu_watch_ps: trace this draw in full, as carbon_gpu_trace_frame would.
-  struct WatchTrace {
-    bool& tracing;
-    bool saved;
-    ~WatchTrace() { tracing = saved; }
-  } watch_trace{tracing_, tracing_};
-  if (ps && watch_ps_ && ps->hash == watch_ps_) {
-    // c<n> as the dumped GLSL names it: register n, or float_constant_map[n] when packed.
-    const auto& t = ps->translated;
-    const bool packed = t.float_constants_compact && !t.float_constant_map.empty();
-    auto constant = [&](uint32_t c, float* v) {
-      const uint32_t reg = packed ? (c < t.float_constant_map.size() ? t.float_constant_map[c] : 0) : c;
-      std::memcpy(v, &regs.values[kRegFloatConstants + 1024 + reg * 4], 16);
-    };
-    float c0[4], c1[4];
-    constant(0, c0);
-    constant(1, c1);
-    WatchRun& r = watch_run_;
-    const bool fresh = !r.last || (frame_number_ != r.last && frame_number_ != r.last + 1);
-    if (fresh) {
-      if (r.last) WatchRunEnd();
-      r = {};
-      r.first = frame_number_;
-      r.c0x_min = r.c0x_max = c0[0];
-      std::memcpy(r.c1_first, c1, 16);
-      std::memcpy(r.c1_peak, c1, 16);
-    }
-    r.last = frame_number_;
-    ++r.draws;
-    r.c0x_min = std::min(r.c0x_min, c0[0]);
-    r.c0x_max = std::max(r.c0x_max, c0[0]);
-    if (c1[3] > r.c1_peak[3]) std::memcpy(r.c1_peak, c1, 16);
-    std::memcpy(r.c1_last, c1, 16);
-  }
-  if (ps && watch_ps_ && ps->hash == watch_ps_ && watch_run_.draws == 1 && watch_runs_ < 60) {
-    tracing_ = true;
-    REXGPU_WARN("[carbon-gpu] watch: frame {} ps {:016X} bools {:08X} {:08X} {:08X} {:08X}", frame_number_,
-                ps->hash, regs.values[kRegBoolConstants], regs.values[kRegBoolConstants + 1],
-                regs.values[kRegBoolConstants + 2], regs.values[kRegBoolConstants + 3]);
-    const auto& t = ps->translated;
-    const bool packed = t.float_constants_compact && !t.float_constant_map.empty();
-    for (uint32_t c = 0; c < 16; ++c) {
-      if (packed && c >= t.float_constant_map.size()) break;
-      const uint32_t reg = packed ? t.float_constant_map[c] : c;
-      float v[4];
-      std::memcpy(v, &regs.values[kRegFloatConstants + 1024 + reg * 4], 16);
-      REXGPU_WARN("[carbon-gpu] watch:   c{} (register {}) = {:g} {:g} {:g} {:g}", c, reg, v[0], v[1], v[2],
-                  v[3]);
-    }
-  }
   // Phase clock: each Mark(p) charges the time since the previous mark to phase p.
   const bool profile = REXCVAR_GET(carbon_gpu_draw_profile);
   double phase_t = profile ? NowSeconds() : 0.0;
@@ -3068,20 +2990,6 @@ void Renderer::Draw(const RegisterFile& regs, Shader* vs, Shader* ps, const Draw
         scissor.extent.width, scissor.extent.height, consts.vtx[0], consts.ndc_scale[0],
         consts.ndc_scale[1], consts.ndc_offset[0], consts.ndc_offset[1]);
   }
-  if (flash_watch_) {
-    FlashDraw d;
-    d.vs = vs->hash;
-    d.ps = ps ? ps->hash : 0;
-    if (const RenderTarget* c0 = pass.color[0]) {
-      d.target = (c0->edram_base & 0xFFFu) | ((c0->pitch & 0x3FFFu) << 12) | ((c0->guest_format & 0xFu) << 26);
-    }
-    d.size = (pass.width & 0xFFFFu) | (pass.height << 16);
-    d.count = info.index_count;
-    d.blend = (pass.color[0] && key.blend[0][0]) ? regs[kBlendControlRegs[0]] : 0;
-    d.scissor = scissor.extent.width * scissor.extent.height;
-    d.prim = uint8_t(info.primitive_type);
-    flash_draws_[frame_number_ % kFlashFrames].push_back(d);
-  }
   Mark(5);  // constants
   upload_kind_ = 4;
   // ---- Record ----
@@ -3455,232 +3363,6 @@ void Renderer::RecordPresent(VkCommandBuffer cb, VkImageView source, uint32_t so
                   rex::ui::vulkan::VulkanPresenter::kGuestOutputInternalLayout);
 }
 
-// carbon_gpu_watch_ps: one line per run of frames that drew the watched shader. For the
-// post-process shader 1AF363D5 the output is (scene + (c1.rgb - scene) * c1.w) * c0.x, so
-// c1 is the fade colour and amount and c0.x the brightness scale.
-void Renderer::WatchRunEnd() {
-  const WatchRun& r = watch_run_;
-  if (!r.last || watch_runs_ >= 200) return;
-  ++watch_runs_;
-  REXGPU_WARN(
-      "[carbon-gpu] watch: run frames {}-{} ({} frames, {} draws) c0.x {:g}..{:g} | c1 first {:g} {:g} {:g} {:g}"
-      " peak {:g} {:g} {:g} {:g} last {:g} {:g} {:g} {:g}",
-      r.first, r.last, r.last - r.first + 1, r.draws, r.c0x_min, r.c0x_max, r.c1_first[0], r.c1_first[1],
-      r.c1_first[2], r.c1_first[3], r.c1_peak[0], r.c1_peak[1], r.c1_peak[2], r.c1_peak[3], r.c1_last[0],
-      r.c1_last[1], r.c1_last[2], r.c1_last[3]);
-}
-
-// ---------------------------------------------------------------------------
-// carbon_gpu_flash_watch
-// ---------------------------------------------------------------------------
-
-void Renderer::FlashCopy(VkCommandBuffer cb, Texture* front) {
-  const uint32_t slot = frame_index_;
-  const uint32_t w = front->width, h = front->height;
-  const uint32_t bytes = w * 4 * kFlashRows;
-  if (h < kFlashRows || w == 0) return;
-  if (bytes > flash_buffer_bytes_[slot]) {
-    if (flash_buffer_[slot]) {
-      VkBuffer old = flash_buffer_[slot];
-      VmaAllocation old_alloc = flash_allocation_[slot];
-      DeferDestroy([this, old, old_alloc]() { vmaDestroyBuffer(allocator_, old, old_alloc); });
-      flash_buffer_[slot] = VK_NULL_HANDLE;
-      flash_buffer_bytes_[slot] = 0;
-    }
-    VkBufferCreateInfo bci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    bci.size = bytes;
-    bci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    VmaAllocationCreateInfo aci = {};
-    aci.usage = VMA_MEMORY_USAGE_AUTO;
-    aci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-    VmaAllocationInfo ai;
-    if (vmaCreateBuffer(allocator_, &bci, &aci, &flash_buffer_[slot], &flash_allocation_[slot], &ai) !=
-        VK_SUCCESS) {
-      flash_buffer_[slot] = VK_NULL_HANDLE;
-      return;
-    }
-    flash_mapped_[slot] = ai.pMappedData;
-    flash_buffer_bytes_[slot] = bytes;
-  }
-  // Rows spread over the frame (a flash covers most of it).
-  VkBufferImageCopy regions[kFlashRows] = {};
-  for (uint32_t k = 0; k < kFlashRows; ++k) {
-    regions[k].bufferOffset = VkDeviceSize(k) * w * 4;
-    regions[k].imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-    regions[k].imageOffset = {0, int32_t((2 * k + 1) * h / (2 * kFlashRows)), 0};
-    regions[k].imageExtent = {w, 1, 1};
-  }
-  TransitionImage(cb, front->image, VK_IMAGE_ASPECT_COLOR_BIT, front->layout,
-                  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-  rec_.CopyImageToBuffer(cb, front->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, flash_buffer_[slot],
-                         kFlashRows, regions);
-  if (REXCVAR_GET(carbon_gpu_flash_capture) && flash_captures_ < kFlashCaptureMax) {
-    // The whole frame into a ring longer than the read-back delay (frames in flight + the frames
-    // the spike test looks at), so the frames around a flash are still there when it is found.
-    const uint32_t k = uint32_t(frame_number_ % kCaptureFrames);
-    const uint32_t full = w * h * 4;
-    if (full > cap_bytes_[k]) {
-      if (cap_buffer_[k]) {
-        VkBuffer old = cap_buffer_[k];
-        VmaAllocation old_alloc = cap_allocation_[k];
-        DeferDestroy([this, old, old_alloc]() { vmaDestroyBuffer(allocator_, old, old_alloc); });
-        cap_buffer_[k] = VK_NULL_HANDLE;
-        cap_bytes_[k] = 0;
-      }
-      VkBufferCreateInfo cbi = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-      cbi.size = full;
-      cbi.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-      VmaAllocationCreateInfo cai = {};
-      cai.usage = VMA_MEMORY_USAGE_AUTO;
-      cai.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-      VmaAllocationInfo cinfo;
-      if (vmaCreateBuffer(allocator_, &cbi, &cai, &cap_buffer_[k], &cap_allocation_[k], &cinfo) == VK_SUCCESS) {
-        cap_mapped_[k] = cinfo.pMappedData;
-        cap_bytes_[k] = full;
-      } else {
-        cap_buffer_[k] = VK_NULL_HANDLE;
-      }
-    }
-    if (cap_buffer_[k]) {
-      VkBufferImageCopy whole = {};
-      whole.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-      whole.imageExtent = {w, h, 1};
-      rec_.CopyImageToBuffer(cb, front->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, cap_buffer_[k], 1,
-                             &whole);
-      cap_frame_[k] = frame_number_ + 1;
-      cap_w_[k] = w;
-      cap_h_[k] = h;
-      cap_swap_[k] = front->resolved_swap_rb;
-    }
-  }
-  TransitionImage(cb, front->image, VK_IMAGE_ASPECT_COLOR_BIT, front->layout,
-                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-  flash_frame_[slot] = frame_number_ + 1;
-  flash_width_[slot] = w;
-}
-
-void Renderer::FlashRead(uint32_t slot) {
-  if (!flash_frame_[slot] || !flash_buffer_[slot]) return;
-  const uint64_t frame = flash_frame_[slot] - 1;
-  flash_frame_[slot] = 0;
-  vmaInvalidateAllocation(allocator_, flash_allocation_[slot], 0, VK_WHOLE_SIZE);
-  const uint8_t* p = static_cast<const uint8_t*>(flash_mapped_[slot]);
-  const uint32_t n = flash_width_[slot] * kFlashRows;
-  uint64_t sum = 0;
-  for (uint32_t i = 0; i < n; ++i) sum += uint32_t(p[4 * i]) + p[4 * i + 1] + p[4 * i + 2];
-  const double luma = double(sum) / (3.0 * n);  // 0-255, red and blue weigh the same
-  // A flash is a spike, one or two frames brighter than the frames on both sides; a fade or a cut to
-  // a brighter scene stays bright and is not one.
-  for (int i = 0; i < 3; ++i) {
-    flash_luma_[i] = flash_luma_[i + 1];
-    flash_luma_frame_[i] = flash_luma_frame_[i + 1];
-  }
-  flash_luma_[3] = luma;
-  flash_luma_frame_[3] = frame + 1;
-  const auto consecutive = [this](int from) {
-    for (int i = from; i < 3; ++i) {
-      if (!flash_luma_frame_[i] || flash_luma_frame_[i + 1] != flash_luma_frame_[i] + 1) return false;
-    }
-    return true;
-  };
-  // Mostly transparent flashes lift a bright race frame by little: 12 levels and 12 %.
-  const auto above = [](double peak, double a, double b) {
-    const double side = std::max(a, b);
-    return peak > side + 12.0 && peak > side * 1.12;
-  };
-  // A two-frame flash is also a one-frame peak against its second frame one read earlier: report
-  // each flash once.
-  if (flash_luma_frame_[2] && flash_luma_frame_[2] <= flash_last_report_) return;
-  if (consecutive(1) && above(flash_luma_[2], flash_luma_[1], flash_luma_[3])) {
-    flash_last_report_ = flash_luma_frame_[3];
-    FlashReport(flash_luma_frame_[2] - 1, 1, flash_luma_[2], std::max(flash_luma_[1], flash_luma_[3]));
-  } else if (consecutive(0) && above(std::min(flash_luma_[1], flash_luma_[2]), flash_luma_[0], flash_luma_[3])) {
-    flash_last_report_ = flash_luma_frame_[3];
-    FlashReport(flash_luma_frame_[1] - 1, 2, std::max(flash_luma_[1], flash_luma_[2]),
-                std::max(flash_luma_[0], flash_luma_[3]));
-  }
-}
-
-void Renderer::FlashReport(uint64_t frame, uint32_t frames, double luma, double around) {
-  if (flash_reports_ >= 40) return;
-  ++flash_reports_;
-  if (REXCVAR_GET(carbon_gpu_flash_capture) && flash_captures_ < kFlashCaptureMax) {
-    // The frame before, the flash frame(s) and the frame after. All are older than the frame
-    // just read back, so their copies have finished.
-    ++flash_captures_;
-    // Copied here, written by a thread of its own: writing on this thread stopped the game for
-    // 6-13 s per flash.
-    struct Shot {
-      std::string path;
-      std::vector<uint8_t> pixels;
-      uint32_t w, h;
-      bool swap;
-    };
-    auto shots = std::make_shared<std::vector<Shot>>();
-    for (uint64_t f = frame ? frame - 1 : 0; f <= frame + frames; ++f) {
-      const uint32_t k = uint32_t(f % kCaptureFrames);
-      if (cap_frame_[k] != f + 1 || !cap_mapped_[k]) continue;
-      vmaInvalidateAllocation(allocator_, cap_allocation_[k], 0, VK_WHOLE_SIZE);
-      Shot shot;
-      shot.path = fmt::format("carbon_frames/flash_{:06}_{}.bmp", frame,
-                              f < frame ? "before" : f >= frame + frames ? "after" : f == frame ? "flash" : "flash2");
-      const auto* src = static_cast<const uint8_t*>(cap_mapped_[k]);
-      shot.pixels.assign(src, src + size_t(cap_w_[k]) * cap_h_[k] * 4);
-      shot.w = cap_w_[k];
-      shot.h = cap_h_[k];
-      shot.swap = cap_swap_[k];
-      REXGPU_WARN("[carbon-gpu] flash: saving {}", shot.path);
-      shots->push_back(std::move(shot));
-    }
-    std::thread([shots]() {
-      for (const Shot& shot : *shots) WriteBmp(shot.path, shot.pixels.data(), shot.w, shot.h, shot.swap);
-    }).detach();
-  }
-  const auto& now = flash_draws_[frame % kFlashFrames];
-  const auto& before = flash_draws_[(frame + kFlashFrames - 1) % kFlashFrames];
-  const bool have_now = flash_draws_frame_[frame % kFlashFrames] == frame;
-  const bool have_before = frame > 0 && flash_draws_frame_[(frame - 1) % kFlashFrames] == frame - 1;
-  REXGPU_WARN("[carbon-gpu] flash: frame {} ({} frame{}) brightness {:.0f} (frames around it {:.0f}), {} "
-              "draws (frame before: {})",
-              frame, frames, frames > 1 ? "s" : "", luma, around, have_now ? now.size() : 0,
-              have_before ? before.size() : 0);
-  if (!have_now) return;
-  struct Group {
-    uint32_t draws = 0, before = 0;
-    uint64_t count = 0;
-    uint32_t scissor = 0;
-  };
-  const auto key = [](const FlashDraw& d) {
-    return fmt::format("target {:08X} {}x{} vs {:016X} ps {:016X} blend {:08X} prim {:02X}", d.target,
-                       d.size & 0xFFFF, d.size >> 16, d.vs, d.ps, d.blend, uint32_t(d.prim));
-  };
-  std::map<std::string, Group> groups;
-  for (const FlashDraw& d : now) {
-    Group& g = groups[key(d)];
-    ++g.draws;
-    g.count += d.count;
-    g.scissor = std::max(g.scissor, d.scissor);
-  }
-  if (have_before) {
-    for (const FlashDraw& d : before) ++groups[key(d)].before;
-  }
-  uint32_t lines = 0;
-  for (const auto& [k, g] : groups) {
-    if (g.draws > g.before && lines < 60) {
-      ++lines;
-      REXGPU_WARN("[carbon-gpu] flash:   {} draws (frame before {}) count {} widest scissor {} px | {}",
-                  g.draws, g.before, g.count, g.scissor, k);
-    }
-  }
-  for (const auto& [k, g] : groups) {
-    if (g.before > g.draws && lines < 80) {
-      ++lines;
-      REXGPU_WARN("[carbon-gpu] flash:   missing: {} draws in the frame before, {} here | {}", g.before,
-                  g.draws, k);
-    }
-  }
-}
-
 void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t width,
                     uint32_t height, const GammaRamp& gamma) {
   if (g_paused.load(std::memory_order_acquire)) {
@@ -3765,10 +3447,6 @@ void Renderer::Swap(const RegisterFile& regs, uint32_t frontbuffer_ptr, uint32_t
   const float source_scale = front ? front->res_scale : 1.0f;
   uint32_t out_w = width ? width : (front ? front->guest.width : source_w);
   uint32_t out_h = height ? height : (front ? front->guest.height : source_h);
-
-  if (flash_watch_ && front && front->format.host_format == VK_FORMAT_R8G8B8A8_UNORM) {
-    FlashCopy(frame().cb, front);
-  }
 
   // Frame dump (debugging): copy the front buffer to a readback buffer.
   VkBuffer dump_buffer = VK_NULL_HANDLE;
