@@ -306,3 +306,15 @@ Race Wars, render scale 100 (1280x720), everything else as above.
 
 GPU-bound at 720p (the CPU waits 16 ms a frame on the GPU fence mid-race): against 540p at the same clocks,
 -1.6 fps at crowded starts and -3.6 fps mid-race.
+
+### CPU 1428 MHz, GPU 691.2 / RAM 1600, 720p (2026-11-27)
+
+Race Wars in Wolf's territory (a heavier track than the session above).
+
+| | fps | draws/frame | GPU ms p50 |
+|---|---|---|---|
+| crowded race starts | 23.5 | 3618 | 38.8 |
+| mid-race | 24.2 | 1954 | 40.9 |
+
+No gain from the CPU clock at 720p: the frame waits ~22 ms on the GPU fence mid-race. Few mid-race samples
+(26 intervals), on a different track, so the mid-race figure is not comparable with 1326 MHz.

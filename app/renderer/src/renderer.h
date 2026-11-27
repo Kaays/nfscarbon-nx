@@ -172,8 +172,6 @@ class Renderer {
   // Command processor time spent idle (ring empty) or in WAIT_REG_MEM, for the
   // per-frame spike report.
   void NoteCpIdle(double seconds) { frame_idle_s_ += seconds; }
-  // EVENT_WRITE_ZPD (occlusion query), counted per frame for carbon_gpu_flash_watch.
-  void NoteQuery(bool ended) { ++(ended ? query_end_ : query_begin_)[frame_number_ % kFlashFrames]; }
   void NoteCpWait(double seconds) { frame_wait_s_ += seconds; }
   void OnPrimaryBufferEnd() {}
 
@@ -625,7 +623,6 @@ class Renderer {
   static constexpr uint32_t kFlashRows = 16;
   std::vector<FlashDraw> flash_draws_[kFlashFrames];
   uint64_t flash_draws_frame_[kFlashFrames] = {};
-  uint32_t query_begin_[kFlashFrames] = {}, query_end_[kFlashFrames] = {};
   VkBuffer flash_buffer_[kFramesInFlight] = {};
   VmaAllocation flash_allocation_[kFramesInFlight] = {};
   void* flash_mapped_[kFramesInFlight] = {};
