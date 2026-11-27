@@ -75,9 +75,12 @@ carbon_scene_resolution = "1280x720"
 
 # --- Switch -----------------------------------------------------------------
 # GPU MHz asked from the system in handheld mode. 460.8 MHz is an official
-# Horizon profile (not an overclock). 0 = do not touch the clocks.
+# Horizon profile (not an overclock). 0 = do not touch the clocks: best with an
+# overclock tool (sys-clk, Horizon OC), which then sets every clock itself.
 nfscarbon_switch_gpu_mhz = 460
-nfscarbon_switch_ram_1600 = false
+# false holds the RAM at 1331 MHz and pulls it back when something raises it,
+# which fights an overclock tool's RAM setting. true leaves the RAM alone.
+nfscarbon_switch_ram_1600 = true
 
 # Area libnx shares with nvdrv for the bookkeeping of every GPU allocation.
 # libnx gives 8 MB; NFSMW ran out of it (error 0x235C) and ships 32.

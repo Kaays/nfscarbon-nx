@@ -2,7 +2,7 @@
 
 The goal is a playable frame rate at the Switch's **stock clocks** (CPU 1020 MHz, GPU 460.8 MHz, RAM 1331 MHz):
 25 FPS in normal races as a first target, 30 later. With an overclock the game already holds 30
-([README](../README.md#where-it-stands)), so most of the work below is about doing the same with less CPU and GPU.
+([README](../README.md#performance)), so most of the work below is about doing the same with less CPU and GPU.
 
 Each piece is independent. Pick one, say so in an issue so two people do not do the same thing, and send the
 measurements with the change: [measurements.md](measurements.md) shows how every number so far was taken.

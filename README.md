@@ -13,57 +13,67 @@ It is not an emulator. The PowerPC code of the game's `default.xex` is staticall
 native Vulkan renderer running on NVK (Mesa).
 
 > [!IMPORTANT]
-> **Playable, with an overclock.** The game boots, the menus, career, cutscenes and races all work, with sound and
-> videos. It **needs an overclock**: at the Switch's stock clocks it does not run well. On the overclock we play
-> with (CPU 1683 / GPU 844 / RAM 2133 MHz) and the fourth CPU core enabled, it holds 28-30 FPS in races and only
-> dips to about 18-22 FPS at the start of Race Wars, while the whole pack is on screen, with clean sound. Long career
-> sessions (2.5 h and more in our tests) run without freezes. Video settings (motion blur, anti-aliasing, resolution
-> and more) are in the game's own **Options > Video** screen. Editions: **USA**, **Europe**, **Europe (Nordic)**, **France**, **Italy**, **Germany**, **Spain** and both **Collector's Editions** (see [Edition](#edition)). Latest version: see [Releases](../../releases).
+> **Playable.** The game boots, the menus, career, cutscenes and races all work, with sound and videos. At the
+> Switch's stock clocks it runs at about 28 FPS in races at 540p, with dips at crowded race starts; an overclock
+> brings it to a steady 30 FPS outside the heaviest moments (see [Performance](#performance)). Video settings
+> (resolution, FPS limit, motion blur, anti-aliasing and more) are in the game's own **Options > Video** screen.
+> Editions: **USA**, **Europe**, **Europe (Nordic)**, **France**, **Italy**, **Germany**, **Spain** and both
+> **Collector's Editions** (see [Edition](#edition)). Latest version: see [Releases](../../releases).
 
-## Where it stands
+## Performance
 
-Tested on a Switch Lite (handheld, 1280x720), USA disc version, all settings as shipped in `nfscarbon.toml`, at
-**CPU 1683 / GPU 844 / RAM 2133 MHz**. The game is locked to 30 FPS by design, as on the Xbox 360.
+Measured on the Collector's Edition (Europe) in handheld mode, all settings as shipped in `nfscarbon.toml` apart
+from the resolution, four CPU cores ([how](#experimental-the-fourth-cpu-core)), in Race Wars and circuit races. The
+game is locked to 30 FPS by design, as on the Xbox 360; menus, free roam and cutscenes run at 30 at every setting
+below. All nine editions run the same code and perform the same.
 
-| | With the fourth core ([how](#experimental-the-fourth-cpu-core)) | Three cores (normal launch) |
-|---|---|---|
-| Menus, free roam, cutscenes | 30 FPS | 30 FPS |
-| Normal races, canyon duels, police chases | 28-30 FPS | 28-30 FPS |
-| Race Wars, first seconds (whole pack on screen) | 18-22 FPS, then 28-30 | 19-24 FPS for 20-40 s, then 26-30 |
-| Sound | clean, also at Race Wars starts | some popping at Race Wars starts |
-| Cutscene videos, boss face videos | normal speed | normal speed |
+| CPU / GPU / RAM (MHz) | Resolution | Race starts (whole pack on screen) | Rest of the race |
+|---|---|---|---|
+| 1020 / 460.8 / 1331 (stock) | 540p | 19 FPS | 28 FPS |
+| 1224 / 614.4 / 1600 | 540p | 24 FPS | 30 FPS |
+| 1326 / 691.2 / 1600 | 540p | 25 FPS | 30 FPS |
+| 1326 / 691.2 / 1600 | 720p | 23.5 FPS | 26.5 FPS |
+| 1428 / 691.2 / 1600 | 720p | 23 FPS | 28 FPS |
+| 1428 / 768 / 1600 | 720p | 24.5 FPS | 29.5 FPS |
+| 1581 / 768 / 1600 | 720p | 26 FPS | 28 FPS |
+| 1581 / 844.8 / 1600 | 720p | 26 FPS | 29.5 FPS |
+| 1683 / 844.8 / 1866 | 720p | 28 FPS | 30 FPS |
+| 1785 / 921.6 / 1866 | 720p | 27.5 FPS | 30 FPS |
+| 1963.5 / 1152 / 2366 | 720p | 29.5 FPS | 30 FPS |
 
-**Stock clocks are not supported**: the game is CPU-bound and the three 1020 MHz cores cannot keep up (low frame
-rate, broken-up sound). Use an overclock (sys-clk or similar).
+> [!NOTE]
+> These are **averages over whole sessions**. In the busiest moments, Race Wars starts above all, the frame rate
+> drops lower than the table shows for a few seconds. Different races and tracks give different numbers (rows at
+> the same clocks measured on different days differ by 1-2 FPS). The details of every session are in
+> [docs/measurements.md](docs/measurements.md).
+
+- **Race starts are CPU-bound**: the game's own frame preparation runs on one core, so there only the CPU clock
+  helps, and the resolution makes little difference.
+- **The rest of the race at 720p is GPU-bound**: 540p ("Balanced" in Options > Video) gives about 3 FPS more at
+  the same clocks, and a higher GPU clock helps.
+- **Sound** is clean from the first overclock rows on. At stock clocks it can crackle at crowded race starts,
+  when the frame rate drops.
 
 ### Why 30 FPS, and not 60
 
 The target is a **steady 30 FPS**, the frame rate the game was made for on the Xbox 360. 60 FPS is not possible on
-the Switch with this game, for now or with any setting:
+the Switch with this game:
 
-- **The CPU is the limit, not the GPU.** Every frame, the Switch's ARM cores run the game's own logic, physics, AI
-  and rendering setup, recompiled from the Xbox 360's PowerPC code. At 1683 MHz on four cores this already takes
-  most of a 33 ms frame in a normal race, and more than that at Race Wars starts. 60 FPS would need every frame done
-  in 16.7 ms: about twice the CPU the Switch has.
-- **Lower resolution does not help.** We measured it: at 360p the frame rate in a crowded race is the same as at
-  720p. The GPU is waiting for the CPU. (1080p, on the other hand, is GPU-bound at about 14-15 FPS on a Switch
-  Lite.)
+- **The CPU is the limit.** Every frame, the Switch's ARM cores run the game's own logic, physics, AI and rendering
+  setup, recompiled from the Xbox 360's PowerPC code. Even at the highest clocks in the table this takes most of a
+  33 ms frame at race starts. 60 FPS would need every frame done in 16.7 ms: about twice the CPU the Switch has.
 - **A steady 30 feels better than an unsteady 40-60.** Frame pacing jumping between 16 and 33 ms looks worse than a
-  locked 30, so the cap (`carbon_gpu_fps_cap = 30`) stays.
-
-What the work goes into instead: keeping 30 in every situation (Race Wars starts are the one place it still dips),
-clean sound, no freezes in long sessions, and the Xbox 360's look (car reflections, motion blur, shadows) without
-shortcuts that show.
+  locked 30, so the cap (`carbon_gpu_fps_cap = 30`, also Options > Video > FPS Limit) stays.
 
 ### Known issues
 
-- **A rare one-frame white flash** (a stray giant polygon), now and then in long races. Once in a while, at a race
-  start, a few frames go **black** instead.
+- **A one-frame white flash in races**: now and then a nearby AI car lights the road and the scenery for one frame,
+  about every 3 seconds while it is right behind or beside you. It may be the game's own effect; still being looked
+  into.
+- **The road texture can disappear for 1-2 seconds** and then come back.
 - **A short freeze when the player takes control** at the start of a race.
 - **The first race stutters** while it compiles graphics pipelines. They are saved on the SD card
   (`cache/carbon_gpu`), and later sessions start smoothly.
-- **Rare crashes in police chases**: twice in the Europe (Nordic) build (once at heat level 1, once in a heavy chase), the
-  game found an object it expects missing. The same code is in the USA build; cause not found yet.
 
 ## What you need
 
