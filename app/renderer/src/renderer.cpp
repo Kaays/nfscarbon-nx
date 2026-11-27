@@ -135,6 +135,9 @@ REXCVAR_DEFINE_INT32(carbon_gpu_recorder_core, 1, "CarbonGPU",
                      "Switch: pin the Vulkan recorder thread to this core (0-3); -1 = let Horizon choose "
                      "(read at start-up)")
     .range(-1, 3);
+REXCVAR_DEFINE_BOOL(carbon_gpu_flash_capture, false, "CarbonGPU",
+                    "Debug, with carbon_gpu_flash_watch: keep the last frames whole and save the frame "
+                    "before a flash, the flash and the frame after as BMP in carbon_frames/ (10 flashes)");
 REXCVAR_DEFINE_BOOL(carbon_gpu_flash_watch, false, "CarbonGPU",
                     "Debug: read back a few rows of every presented frame and, when one or two frames "
                     "are much brighter than the frames on both sides (the random white flash), log "
@@ -3509,6 +3512,45 @@ void Renderer::FlashCopy(VkCommandBuffer cb, Texture* front) {
                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
   rec_.CopyImageToBuffer(cb, front->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, flash_buffer_[slot],
                          kFlashRows, regions);
+  if (REXCVAR_GET(carbon_gpu_flash_capture) && flash_captures_ < kFlashCaptureMax) {
+    // The whole frame into a ring longer than the read-back delay (frames in flight + the frames
+    // the spike test looks at), so the frames around a flash are still there when it is found.
+    const uint32_t k = uint32_t(frame_number_ % kCaptureFrames);
+    const uint32_t full = w * h * 4;
+    if (full > cap_bytes_[k]) {
+      if (cap_buffer_[k]) {
+        VkBuffer old = cap_buffer_[k];
+        VmaAllocation old_alloc = cap_allocation_[k];
+        DeferDestroy([this, old, old_alloc]() { vmaDestroyBuffer(allocator_, old, old_alloc); });
+        cap_buffer_[k] = VK_NULL_HANDLE;
+        cap_bytes_[k] = 0;
+      }
+      VkBufferCreateInfo cbi = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+      cbi.size = full;
+      cbi.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+      VmaAllocationCreateInfo cai = {};
+      cai.usage = VMA_MEMORY_USAGE_AUTO;
+      cai.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+      VmaAllocationInfo cinfo;
+      if (vmaCreateBuffer(allocator_, &cbi, &cai, &cap_buffer_[k], &cap_allocation_[k], &cinfo) == VK_SUCCESS) {
+        cap_mapped_[k] = cinfo.pMappedData;
+        cap_bytes_[k] = full;
+      } else {
+        cap_buffer_[k] = VK_NULL_HANDLE;
+      }
+    }
+    if (cap_buffer_[k]) {
+      VkBufferImageCopy whole = {};
+      whole.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+      whole.imageExtent = {w, h, 1};
+      rec_.CopyImageToBuffer(cb, front->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, cap_buffer_[k], 1,
+                             &whole);
+      cap_frame_[k] = frame_number_ + 1;
+      cap_w_[k] = w;
+      cap_h_[k] = h;
+      cap_swap_[k] = front->resolved_swap_rb;
+    }
+  }
   TransitionImage(cb, front->image, VK_IMAGE_ASPECT_COLOR_BIT, front->layout,
                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   flash_frame_[slot] = frame_number_ + 1;
@@ -3560,6 +3602,21 @@ void Renderer::FlashRead(uint32_t slot) {
 void Renderer::FlashReport(uint64_t frame, uint32_t frames, double luma, double around) {
   if (flash_reports_ >= 40) return;
   ++flash_reports_;
+  if (REXCVAR_GET(carbon_gpu_flash_capture) && flash_captures_ < kFlashCaptureMax) {
+    // The frame before, the flash frame(s) and the frame after. All are older than the frame
+    // just read back, so their copies have finished.
+    ++flash_captures_;
+    for (uint64_t f = frame ? frame - 1 : 0; f <= frame + frames; ++f) {
+      const uint32_t k = uint32_t(f % kCaptureFrames);
+      if (cap_frame_[k] != f + 1 || !cap_mapped_[k]) continue;
+      vmaInvalidateAllocation(allocator_, cap_allocation_[k], 0, VK_WHOLE_SIZE);
+      const std::string path = fmt::format("carbon_frames/flash_{:06}_{}.bmp", frame,
+                                           f < frame ? "before" : f >= frame + frames ? "after"
+                                                                 : f == frame ? "flash" : "flash2");
+      WriteBmp(path, static_cast<const uint8_t*>(cap_mapped_[k]), cap_w_[k], cap_h_[k], cap_swap_[k]);
+      REXGPU_WARN("[carbon-gpu] flash: saved {}", path);
+    }
+  }
   const auto& now = flash_draws_[frame % kFlashFrames];
   const auto& before = flash_draws_[(frame + kFlashFrames - 1) % kFlashFrames];
   const bool have_now = flash_draws_frame_[frame % kFlashFrames] == frame;

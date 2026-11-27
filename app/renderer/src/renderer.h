@@ -630,6 +630,17 @@ class Renderer {
   uint32_t flash_buffer_bytes_[kFramesInFlight] = {};
   uint64_t flash_frame_[kFramesInFlight] = {};  // frame whose rows the slot holds (0 = none)
   uint32_t flash_width_[kFramesInFlight] = {};
+  // carbon_gpu_flash_capture: whole frames, a ring longer than the read-back delay.
+  static constexpr uint32_t kCaptureFrames = 8;
+  static constexpr uint32_t kFlashCaptureMax = 10;
+  VkBuffer cap_buffer_[kCaptureFrames] = {};
+  VmaAllocation cap_allocation_[kCaptureFrames] = {};
+  void* cap_mapped_[kCaptureFrames] = {};
+  uint32_t cap_bytes_[kCaptureFrames] = {};
+  uint64_t cap_frame_[kCaptureFrames] = {};  // frame + 1 (0 = none)
+  uint32_t cap_w_[kCaptureFrames] = {}, cap_h_[kCaptureFrames] = {};
+  bool cap_swap_[kCaptureFrames] = {};
+  uint32_t flash_captures_ = 0;
   // Brightness of the last four frames read back, oldest first (frame + 1, 0 = none).
   double flash_luma_[4] = {};
   uint64_t flash_luma_frame_[4] = {};
