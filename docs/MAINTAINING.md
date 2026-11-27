@@ -102,7 +102,7 @@ datos" = frames requested and not delivered) before changing code. Two wrong gue
 worth knowing: user clip planes (now supported, but the game does not use them there) and the guest clock jump
 (reverted: not the cause, and it also skipped a real 1.6 s stall at boot).
 
-The "white flash" in races (2026-11) was chased for a week and left alone: one nearby AI car lights the scene from
+The "white flash" in races (2026-11) was chased over many test sessions and left alone: one nearby AI car lights the scene from
 behind for one frame about every 3 s, like a headlight flash. The frame pictures show correct geometry and textures,
 and the renderer shortcuts were ruled out one by one (ZCULL, the NVK draw-path improvements, the texture bind carry
 checked bind by bind). It is most likely the game's own; if someone shows it is not, compare with Xenia first.
