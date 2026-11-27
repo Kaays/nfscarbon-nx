@@ -36,7 +36,9 @@ REGION=<region> [PGO=generate|use] bash tools/build.sh <mesa-sdk dir> <jobs>
 - Hook sources are written with **USA** addresses and listed in `app/hooks_usa.txt`. For another edition,
   `codegen.sh` maps every address (`tools/map_edition.py`) and writes translated copies to `app/src_<region>/`
   (`tools/region_sources.py`). A source with one unmapped address is left out for that edition, so check the
-  codegen output: "10 hook sources translated" means all of them.
+  codegen output: "11 hook sources translated" means all of them (count the `src/` lines of `hooks_usa.txt`).
+- `tools/all_regions.sh <mesa sdk> [jobs]` runs codegen and build for every extracted edition and writes
+  `out/regions/report.txt` (hooks mapped, sources left out, PGO, build result) and one NRO per edition.
 - `app/CMakeLists.txt` has an explicit source list: a new `.cpp` must be added there (and to `hooks_usa.txt` if it
   names game addresses).
 
