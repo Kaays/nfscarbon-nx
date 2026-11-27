@@ -255,6 +255,22 @@ never filled (peak 227 MiB) and the flashes dropped to one per race, same frame 
 flash still happened twice and the trailing shadow was unchanged, at 27.1 fps average in crowded windows (27.9
 with it on): the arena is neither the flash nor the shadow. 256 MiB is now the default.
 
+## Clock profiles, summary for the README (collector_pal)
+
+Average fps over whole sessions (Race Wars and circuits); "crowded" = race starts with 3000+ draws per frame.
+Each row comes from the section of that date below; rows marked * had a renderer setting off for a test. Add a
+row per new session; the README table at v1.0.0 is made from this one.
+
+| CPU / GPU / RAM MHz | resolution | crowded starts fps | mid-race fps |
+|---|---|---|---|
+| 1020 / 460.8 / 1331 (stock) | 540p | 19.1 | 27.9 |
+| 1224 / 614.4 / 1600 | 540p | 23.6 | 29.8 |
+| 1326 / 691.2 / 1600 | 540p | 25.1 | 30.0 |
+| 1326 / 691.2 / 1600 | 720p | 23.5 | 26.4 |
+| 1428 / 691.2 / 1600 * | 720p | 24.0 | 27.6 |
+| 1428 / 768 / 1600 * | 720p | 25.2 | 28.0 |
+| 1581 / 768 / 1600 | 720p | 26.0 | 28.2 |
+
 ## Collector's Edition (collector_pal), stock clocks, 540p (2026-11-26)
 
 Reference for the clock profiles to come. CPU 1020 MHz, GPU 460.8 MHz, RAM 1331 MHz; render scale 75

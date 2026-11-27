@@ -109,6 +109,9 @@ taken out again; they are in the history from commit 89a380a on.
 
 ## Still open
 
+- **One-frame white flash in races**: a nearby AI car lights the scene from behind for one frame about every 3 s
+  (frame pictures: correct geometry and textures; ZCULL, the NVK draw-path improvements and the texture bind carry
+  ruled out). Possibly the game's own; kept open until compared with Xenia or the Xbox 360.
 - **Crowded race starts at 19-20 FPS at stock clocks** (collector_pal, 540p; 28-30 mid-race). The game's preparation
   thread is the limit and its time is spread over hundreds of functions: the hottest leaf functions are native now
   (audio, vector math), the rest gives a few tenths of an FPS each. Lower resolution or overclocking is the answer.
