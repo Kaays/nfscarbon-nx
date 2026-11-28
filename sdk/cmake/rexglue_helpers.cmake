@@ -90,6 +90,13 @@ function(rexglue_configure_target target_name)
     target_compile_definitions(${target_name} PRIVATE
         REXGLUE_BUILD_CONFIG="$<CONFIG>")
 
+    # rex_app.cpp (compiled into the host target above) includes imgui.h, and rexruntime links imgui
+    # privately: take its include path, as the Switch build does (cmake/rexglue_switch.cmake).
+    if(TARGET imgui)
+        target_include_directories(${target_name} PRIVATE
+            $<TARGET_PROPERTY:imgui,INTERFACE_INCLUDE_DIRECTORIES>)
+    endif()
+
     if(UNIX AND NOT APPLE)
         set_target_properties(${target_name} PROPERTIES
             INSTALL_RPATH "$ORIGIN"
