@@ -15,22 +15,15 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 JOBS=${1:-4}
 REGION=${REGION:-usa}
-# The first Clang 20 or newer found: clang++-22/21/20 (apt.llvm.org names), then plain clang++.
-if [ -z "${CLANGXX:-}" ]; then
-  for v in 22 21 20 ""; do
-    cxx=clang++${v:+-$v}
-    command -v "$cxx" >/dev/null || continue
-    CLANGXX=$cxx
-    CLANG=clang${v:+-$v}
-    break
-  done
+# clang-20 / clang++-20 (Ubuntu's apt.llvm.org names), else plain clang / clang++ (Arch, Fedora, ...).
+if [ -z "${CLANGXX:-}" ] && ! command -v clang++-20 >/dev/null && command -v clang++ >/dev/null; then
+  CLANG=clang
+  CLANGXX=clang++
 fi
-if [ -z "${CLANGXX:-}" ]; then
-  echo "no clang++ found: install Clang 20 or newer, for example on Ubuntu / Kubuntu:" >&2
-  echo "  wget https://apt.llvm.org/llvm.sh && sudo bash llvm.sh 20" >&2
-  exit 1
-fi
-CLANG=${CLANG:-clang}
+CLANG=${CLANG:-clang-20}
+CLANGXX=${CLANGXX:-clang++-20}
+OUT=$ROOT/app/out/linux-$REGION
+command -v "$CLANGXX" >/dev/null || { echo "$CLANGXX not found: install Clang 20 (see tools/build_rexglue_wsl.sh)"; exit 1; }
 echo "compiler: $("$CLANGXX" --version | head -1)"
 GEN_REGION=$(cat "$ROOT/app/generated/REGION" 2>/dev/null || echo "?")
 if [ "$GEN_REGION" != "$REGION" ]; then
