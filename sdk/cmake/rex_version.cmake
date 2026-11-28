@@ -125,6 +125,25 @@ function(rex_resolve_version out_var)
         return()
     endif()
 
+    # nfscarbon-nx: the SDK sits inside the game's repository, whose v* tags are the port's releases
+    # (v1.0.0 and on), not the SDK's: describing them made the floor look like a regression. Hold the
+    # version at the floor when the SDK is not the top of its git tree.
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --show-toplevel
+        WORKING_DIRECTORY "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/.."
+        OUTPUT_VARIABLE sdk_toplevel
+        ERROR_QUIET
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE sdk_toplevel_rc)
+    get_filename_component(sdk_dir "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/.." REALPATH)
+    if(sdk_toplevel_rc EQUAL 0)
+        get_filename_component(sdk_toplevel "${sdk_toplevel}" REALPATH)
+    endif()
+    if(NOT sdk_toplevel_rc EQUAL 0 OR NOT sdk_toplevel STREQUAL sdk_dir)
+        set(${out_var} "${ARG_FLOOR_MAJOR}.${ARG_FLOOR_MINOR}.0" PARENT_SCOPE)
+        return()
+    endif()
+
     execute_process(
         COMMAND ${GIT_EXECUTABLE} describe --tags --exact-match
             --match "v[0-9]*.[0-9]*.[0-9]*"
