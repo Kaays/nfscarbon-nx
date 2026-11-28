@@ -15,6 +15,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 JOBS=${1:-4}
 REGION=${REGION:-usa}
+OUT=$ROOT/app/out/linux-$REGION
 # The first Clang 20 or newer found: clang++-22/21/20 (apt.llvm.org names), then plain clang++.
 if [ -z "${CLANGXX:-}" ]; then
   for v in 22 21 20 ""; do
