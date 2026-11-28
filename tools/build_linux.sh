@@ -8,9 +8,9 @@
 # nfs-carbon-recomp. Needs what tools/build_rexglue_wsl.sh needs (Clang 20, CMake, Ninja, X11/Wayland
 # headers) and a Vulkan driver (Mesa for Intel/AMD, or NVIDIA's).
 #
-# Output in app/out/linux-<region>/: nfscarbon, librexgpu-carbon.so, librexgpu-xenos.so, librexruntime.so and
-# nfscarbon.toml (copied once). That folder is all a machine needs (with a Vulkan driver). Run it with
-#   cd app/out/linux-<region> && ./nfscarbon --game_data_root=/path/to/game_root --gpu_plugin=carbon
+# Output: app/out/linux-<region>/nfscarbon and librexgpu-carbon.so. Run it with
+#   cp app/nfscarbon.toml app/out/linux-<region>/
+#   app/out/linux-<region>/nfscarbon --game_data_root=/path/to/game_root --gpu_plugin=carbon
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 JOBS=${1:-4}
@@ -51,8 +51,4 @@ fi
 cmake -S "$ROOT/app" -B "$OUT" -DREXGLUE_BUILD_HOST_TOOLS=OFF >/dev/null
 start=$(date +%s)
 cmake --build "$OUT" -j "$JOBS"
-# The SDK writes its shared runtime to sdk/out/linux-amd64; the executable looks next to itself ($ORIGIN).
-cp -u "$ROOT/sdk/out/linux-amd64/librexruntime.so" "$OUT/"
-[ -f "$OUT/nfscarbon.toml" ] || cp "$ROOT/app/nfscarbon.toml" "$OUT/"
 echo "built in $(( $(date +%s) - start )) s: $OUT/nfscarbon"
-echo "run:  cd $OUT && ./nfscarbon --game_data_root=<game_root folder> --gpu_plugin=carbon"
