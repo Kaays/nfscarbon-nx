@@ -43,8 +43,12 @@ if [ ! -f "$OUT/CMakeCache.txt" ]; then
   cmake -S "$ROOT/app" -B "$OUT" -G Ninja -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_C_COMPILER="$CLANG" -DCMAKE_CXX_COMPILER="$CLANGXX" \
     -DCMAKE_C_FLAGS=-march=x86-64-v2 -DCMAKE_CXX_FLAGS=-march=x86-64-v2 \
-    -DREXGLUE_ENABLE_TRACY=OFF -DREXSDK_DIR="$ROOT/sdk" -DNFSCARBON_REGION="$REGION"
+    -DREXGLUE_ENABLE_TRACY=OFF -DREXSDK_DIR="$ROOT/sdk" -DNFSCARBON_REGION="$REGION" \
+    -DREXGLUE_BUILD_HOST_TOOLS=OFF
 fi
+# Without the code generator in the build, nothing re-runs codegen: app/generated stays what
+# tools/codegen.sh made for the edition (also set on build folders configured before this option).
+cmake -S "$ROOT/app" -B "$OUT" -DREXGLUE_BUILD_HOST_TOOLS=OFF >/dev/null
 start=$(date +%s)
 cmake --build "$OUT" -j "$JOBS"
 echo "built in $(( $(date +%s) - start )) s: $OUT/nfscarbon"

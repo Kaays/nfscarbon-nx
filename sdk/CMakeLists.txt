@@ -277,7 +277,11 @@ add_subdirectory(src/audio)
 add_subdirectory(src/graphics)
 add_subdirectory(src/system)
 add_subdirectory(src/kernel)
-if(NOT REXGLUE_PLATFORM_SWITCH)
+# nfscarbon-nx: OFF for a desktop build of the game (tools/build_linux.sh). With the tool present the generated
+# rexglue.cmake re-runs codegen from nfscarbon_manifest.toml in every new build folder, which is the USA manifest
+# and not the one tools/codegen.sh used for the edition.
+option(REXGLUE_BUILD_HOST_TOOLS "Build the code generator on a host build" ON)
+if(NOT REXGLUE_PLATFORM_SWITCH AND REXGLUE_BUILD_HOST_TOOLS)
     # Host tools. Code generation runs on the PC; a Switch build compiles its
     # output.
     add_subdirectory(src/codegen)
