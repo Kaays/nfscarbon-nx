@@ -53,11 +53,14 @@ if(NOT REXGLUE_PLATFORM_SWITCH AND TARGET renderdoc)
     target_link_libraries(rexgpu-carbon PRIVATE renderdoc)
 endif()
 
-if(WIN32)
-    # Next to nfscarbon.exe, where LoadGpuPlugin looks.
+if(NOT REXGLUE_PLATFORM_SWITCH)
+    # Next to the executable, where LoadGpuPlugin looks (the SDK's default output folder is
+    # sdk/out/<platform>).
     set_target_properties(rexgpu-carbon PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+endif()
+if(WIN32)
     target_compile_definitions(rexgpu-carbon PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 endif()
 
