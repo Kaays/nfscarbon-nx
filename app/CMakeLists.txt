@@ -68,10 +68,6 @@ if(NOT NFSCARBON_REGION STREQUAL "usa")
     list(REMOVE_ITEM NFSCARBON_SOURCES ${NFSCARBON_USA_HOOKS})
     # The same hooks translated to this edition's addresses (tools/region_sources.py, run by codegen.sh).
     file(GLOB NFSCARBON_REGION_HOOKS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src_${NFSCARBON_REGION}/*.cpp")
-    if(NOT REXGLUE_PLATFORM_SWITCH)
-        # Only where the renderer is linked in (see ring_wait_hook.cpp above).
-        list(FILTER NFSCARBON_REGION_HOOKS EXCLUDE REGEX "/ring_wait_hook\\.cpp$")
-    endif()
     list(APPEND NFSCARBON_SOURCES ${NFSCARBON_REGION_HOOKS})
     message(STATUS "Edition ${NFSCARBON_REGION}: hooks from src_${NFSCARBON_REGION}/ (${NFSCARBON_REGION_HOOKS})")
 endif()
