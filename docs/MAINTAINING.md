@@ -112,7 +112,8 @@ taken out again; they are in the history from commit 89a380a on.
 
 - **One-frame white flash in races**: a nearby AI car lights the scene from behind for one frame about every 3 s
   (frame pictures: correct geometry and textures; ZCULL, the NVK draw-path improvements and the texture bind carry
-  ruled out). Possibly the game's own; kept open until compared with Xenia or the Xbox 360.
+  ruled out). Also seen on an x86-64 Linux desktop build of the same code (2026-11-28, build reverted again), so it
+  is not specific to the Switch or ARM. Possibly the game's own; kept open until compared with Xenia or the Xbox 360.
 - **The road texture disappears for 1-2 s** and comes back (seen once in a normal session, 2026-11-27; earlier only
   with the stack-profiling flag file).
 - **Crowded race starts at 19-20 FPS at stock clocks** (collector_pal, 540p; 28-30 mid-race). The game's preparation
